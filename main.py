@@ -19,7 +19,7 @@ import time
 import requests
 from agents import WebSearchTool
 from agents import Agent
-from agentic_tools import websearch_tool, gmail_mcp_server, file_container
+from agentic_tools import websearch_tool
 from agent_team import assisstant_agent, tools_agent
 from tts_prompt import tts_instruct_prompt
 from dotenv import load_dotenv
@@ -98,9 +98,10 @@ async def main():
                     break
         print("---\nA program véget ért.")
     finally:
-        # MCP kapcsolatok lezárása
-        await file_container.cleanup()
-        await gmail_mcp_server.cleanup()
+        # MCP kapcsolatok lezárása (kikommentelve: nincs szükség jelenleg ezekre a szolgáltatásokra)
+        # await file_container.cleanup()
+        # await gmail_mcp_server.cleanup()
+        print("A program véget ért.")
         
 async def cli_main():
     """Szöveges CLI interfész az ügynökkel való kommunikációhoz"""
@@ -149,32 +150,18 @@ async def cli_main():
 
 if __name__ == "__main__":
     import sys
-    import logging
-    logging.basicConfig(level=logging.INFO)
     if len(sys.argv) > 1 and sys.argv[1] == "agent_zero":
         # CLI mód indítása
-        # mcp_proc = subprocess.Popen(["python3", "mcp_server_tools.py"])
-        # gmail_proc = subprocess.Popen(["python3", "gmail_mcp_server_tool.py"])
-        # file_container_proc = subprocess.Popen(["python3", "file_container_mcp_server.py"])
         print("CLI mód indítása")
         time.sleep(5)
         try:
             asyncio.run(cli_main())
         finally:
             print("CLI mód vége")
-            # mcp_proc.terminate()
-            # gmail_proc.terminate()
-            # file_container_proc.terminate()
     else:
-        # Eredeti voice mód
-        # mcp_proc = subprocess.Popen(["python3", "mcp_server_tools.py"])
-        # gmail_proc = subprocess.Popen(["python3", "gmail_mcp_server_tool.py"])
-        # file_container_proc = subprocess.Popen(["python3", "file_container_mcp_server.py"])       
+        prinr("hang alapú mód indítása")
         time.sleep(5)
         try:
             asyncio.run(main())
         finally:
-            print("CLI mód vége")
-            # mcp_proc.terminate()
-            # gmail_proc.terminate()
-            # file_container_proc.terminate()
+            print("hang alapú mód vége")

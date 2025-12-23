@@ -6,9 +6,7 @@ from llm_clock import magyar_ido_szoveggel
 from datetime import datetime
 import requests
 
-
 # hagyományos toolok
-
 websearch_tool = WebSearchTool(search_context_size="low")
 
 @function_tool
