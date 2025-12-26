@@ -1,7 +1,7 @@
 #from agents.extensions.handoff_prompt import prompt_with_handoff_instructions
 from agents import Agent, AgentOutputSchema
-from voice_assistant_prompt import assisstant_prompt
-from agentic_tools import display_text_terminal, get_current_time, websearch_tool
+from openai_apis.agents.prompts.voice_assistant import assisstant_prompt
+from openai_apis.agents.tools import display_text_terminal, get_current_time, websearch_tool
 
 #
 # a megnyitott linkeket valahól chacelni kellene egy state-ben, ha további user interakcióhoz.

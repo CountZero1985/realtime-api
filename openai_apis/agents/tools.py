@@ -2,7 +2,7 @@ from agents import WebSearchTool
 #from agents.mcp import MCPServer, MCPServerSse
 from agents import Tool
 from agents import function_tool
-from llm_clock import magyar_ido_szoveggel
+from openai_apis.utils.time_format import magyar_ido_szoveggel
 from datetime import datetime
 import requests
 
