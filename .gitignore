@@ -12,3 +12,13 @@ wheels/
 # Environment variables
 .env
 
+# Logs
+logs/
+*.log
+
+# Coverage
+.coverage
+htmlcov/
+
+# Claude Code
+.claude/
