@@ -1,8 +1,9 @@
 """Unit tests for BaseSession class."""
 import pytest
 import uuid
+import json
 from unittest.mock import patch, MagicMock, call
-from openai_apis import BaseSession, SessionState, InvalidStateTransition, BaseConfig
+from openai_apis import BaseSession, SessionState, InvalidStateTransition, BaseConfig, SessionAuditLog
 
 
 class ConcreteSession(BaseSession):
@@ -264,61 +265,45 @@ class TestEventCallbacks:
 class TestAuditLogging:
     """Test audit logging integration."""
 
-    @patch("openai_apis._session.log_audit_event")
-    def test_session_created_audit_event(self, mock_log):
-        """session_created audit event logged on init."""
+    def test_session_created_audit_event(self):
+        """session.created audit event logged on init."""
         session = ConcreteSession()
+        events = session.audit_log.events
+        created = [e for e in events if e.event_type == "session.created"]
+        assert len(created) == 1
+        assert created[0].session_id == session.session_id
+        assert "config_type" in created[0].data
 
-        # Find the session_created call
-        created_calls = [
-            c for c in mock_log.call_args_list
-            if c[1].get("action") == "session_created"
-        ]
-        assert len(created_calls) == 1
-
-        call_kwargs = created_calls[0][1]
-        assert call_kwargs["event_type"] == "session"
-        assert call_kwargs["session_id"] == session.session_id
-        assert "config_type" in call_kwargs["details"]
-
-    @patch("openai_apis._session.log_audit_event")
-    def test_state_transition_audit_event(self, mock_log):
-        """state_transition audit event logged."""
+    def test_state_transition_audit_event(self):
+        """session.state_transition audit event logged."""
         session = ConcreteSession()
-        mock_log.reset_mock()  # Clear init call
-
         session._transition_to(SessionState.CONNECTING)
+        events = session.audit_log.events
+        transitions = [e for e in events if e.event_type == "session.state_transition"]
+        assert len(transitions) == 1
+        assert transitions[0].data["from"] == "created"
+        assert transitions[0].data["to"] == "connecting"
 
-        # Find the state_transition call
-        transition_calls = [
-            c for c in mock_log.call_args_list
-            if c[1].get("action") == "state_transition"
-        ]
-        assert len(transition_calls) == 1
-
-        call_kwargs = transition_calls[0][1]
-        assert call_kwargs["event_type"] == "session"
-        assert call_kwargs["session_id"] == session.session_id
-        assert call_kwargs["details"]["from"] == "created"
-        assert call_kwargs["details"]["to"] == "connecting"
-
-    @patch("openai_apis._session.log_audit_event")
-    async def test_session_closed_audit_event(self, mock_log):
-        """session_closed audit event logged on exit."""
+    async def test_session_closed_audit_event(self):
+        """session.closed audit event logged on exit."""
         session = ConcreteSession()
-        mock_log.reset_mock()  # Clear init calls
-
         async with session:
             pass
+        events = session.audit_log.events
+        closed = [e for e in events if e.event_type == "session.closed"]
+        assert len(closed) == 1
+        assert closed[0].data["had_error"] is False
 
-        # Find the session_closed call
-        closed_calls = [
-            c for c in mock_log.call_args_list
-            if c[1].get("action") == "session_closed"
-        ]
-        assert len(closed_calls) == 1
+    def test_audit_log_property(self):
+        """audit_log property returns SessionAuditLog instance."""
+        session = ConcreteSession()
+        assert isinstance(session.audit_log, SessionAuditLog)
+        assert session.audit_log.session_id == session.session_id
 
-        call_kwargs = closed_calls[0][1]
-        assert call_kwargs["event_type"] == "session"
-        assert call_kwargs["session_id"] == session.session_id
-        assert call_kwargs["details"]["had_error"] is False
+    def test_audit_log_export_json(self):
+        """audit_log.export_json() returns valid JSON with session events."""
+        session = ConcreteSession()
+        json_str = session.audit_log.export_json()
+        data = json.loads(json_str)
+        assert data["session_id"] == session.session_id
+        assert len(data["events"]) >= 1  # At least session.created

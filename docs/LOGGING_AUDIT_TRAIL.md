@@ -8,11 +8,12 @@ This document describes the comprehensive logging and audit trail system impleme
 
 ### Components
 
-1. **logging_config.py** - Centralized logging configuration
+1. **_logging.py** - Centralized logging configuration
 2. **Structured Logging** - JSON format for production, human-readable for development
-3. **Audit Trail** - Separate audit log for compliance and tracking
-4. **Performance Metrics** - Dedicated performance logging
-5. **Correlation IDs** - Request tracking across components
+3. **Per-Session Audit Logging** - `SessionAuditLog` for in-memory per-session event tracking
+4. **Global Audit Trail** - Separate audit log file for compliance and tracking
+5. **Performance Metrics** - Dedicated performance logging with duration tracking
+6. **Correlation IDs** - Request tracking across components
 
 ### Log Files
 
@@ -350,7 +351,7 @@ log_performance(
 ### API Call Logging
 
 ```python
-from logging_config import log_api_call
+from openai_apis import log_api_call
 
 log_api_call(
     api_name="OpenAI",
@@ -359,6 +360,128 @@ log_api_call(
     status_code=200,
     duration_ms=450.2
 )
+```
+
+### Per-Session Audit Logging
+
+All sessions inheriting from `BaseSession` have a built-in per-session audit log:
+
+```python
+from openai_apis import BaseSession, SessionAuditLog, AuditEvent
+
+# Access the session's audit log
+async with MySession() as session:
+    # The audit log is automatically created
+    audit_log = session.audit_log  # Returns SessionAuditLog instance
+
+    # Log custom events
+    session.audit_log.log(
+        event_type="api.call",
+        data={"endpoint": "/transcribe", "size": 1024}
+    )
+
+    # Log events with duration
+    session.audit_log.log(
+        event_type="processing.completed",
+        data={"items": 42},
+        duration_ms=523.5
+    )
+
+    # Use context manager for automatic duration tracking
+    with session.audit_log.measure("expensive_operation", {"param": "value"}):
+        # Operation duration is measured automatically
+        result = await do_expensive_work()
+        # Duration is logged when context exits
+
+    # Access all events for this session
+    events = session.audit_log.events  # Returns list[AuditEvent]
+
+    # Iterate over events
+    for event in events:
+        print(f"{event.timestamp}: {event.event_type}")
+        print(f"  Data: {event.data}")
+        if event.duration_ms:
+            print(f"  Duration: {event.duration_ms}ms")
+
+    # Export to JSON string
+    json_output = session.audit_log.export_json()
+    print(json_output)
+
+    # Export to file
+    from pathlib import Path
+    session.audit_log.export_to_file(Path("logs/session_audit.json"))
+```
+
+**Built-in Session Events:**
+
+All sessions automatically log these events:
+
+- `session.created` - Logged when session is initialized (data: `config_type`)
+- `session.state_transition` - Logged on state changes (data: `from`, `to`)
+- `session.closed` - Logged when session exits (data: `had_error`)
+
+**SessionAuditLog API:**
+
+```python
+class SessionAuditLog:
+    """Per-session audit log with in-memory storage."""
+
+    @property
+    def session_id(self) -> str:
+        """Get the session ID."""
+
+    @property
+    def events(self) -> list[AuditEvent]:
+        """Get a copy of all logged events."""
+
+    def log(
+        self,
+        event_type: str,
+        data: Optional[dict] = None,
+        duration_ms: Optional[float] = None
+    ) -> None:
+        """Log an audit event."""
+
+    def measure(
+        self,
+        event_type: str,
+        data: Optional[dict] = None
+    ) -> ContextManager:
+        """Context manager for automatic duration tracking."""
+
+    def export_json(self) -> str:
+        """Export events as JSON string."""
+
+    def export_to_file(self, path: Path) -> None:
+        """Export events to JSON file."""
+```
+
+**Thread Safety:**
+
+`SessionAuditLog` is thread-safe and async-safe. Multiple concurrent operations can safely log to the same session's audit log.
+
+**Export Format:**
+
+```json
+{
+  "session_id": "550e8400-e29b-41d4-a716-446655440000",
+  "events": [
+    {
+      "timestamp": "2025-12-25T10:30:15.123456",
+      "session_id": "550e8400-e29b-41d4-a716-446655440000",
+      "event_type": "session.created",
+      "data": {"config_type": "BaseConfig"},
+      "duration_ms": null
+    },
+    {
+      "timestamp": "2025-12-25T10:30:15.234567",
+      "session_id": "550e8400-e29b-41d4-a716-446655440000",
+      "event_type": "api.call",
+      "data": {"endpoint": "/transcribe"},
+      "duration_ms": 145.3
+    }
+  ]
+}
 ```
 
 ## Audit Trail Queries

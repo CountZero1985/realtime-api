@@ -39,6 +39,9 @@ from pathlib import Path
 from typing import Optional, Dict, Any
 from contextvars import ContextVar
 import uuid
+from dataclasses import dataclass
+import time
+import threading
 
 
 # Context variable for correlation ID
@@ -101,6 +104,121 @@ class ContextFilter(logging.Filter):
         """Add correlation ID to record."""
         record.correlation_id = correlation_id.get() or "none"
         return True
+
+
+@dataclass
+class AuditEvent:
+    """A single audit event with timestamp and optional duration."""
+    timestamp: datetime
+    session_id: str
+    event_type: str
+    data: dict
+    duration_ms: Optional[float] = None
+
+
+class SessionAuditLog:
+    """Per-session structured audit log with in-memory event storage.
+
+    Thread-safe and async-safe. Each BaseSession instance owns one.
+    """
+
+    def __init__(self, session_id: str) -> None:
+        self._session_id = session_id
+        self._events: list[AuditEvent] = []
+        self._lock = threading.Lock()
+
+    @property
+    def session_id(self) -> str:
+        return self._session_id
+
+    @property
+    def events(self) -> list[AuditEvent]:
+        with self._lock:
+            return list(self._events)
+
+    def log(self, event_type: str, data: Optional[dict] = None, duration_ms: Optional[float] = None) -> None:
+        """Log an audit event.
+
+        Args:
+            event_type: Event type string (e.g. "session.created", "audio.received").
+            data: Arbitrary event data dict.
+            duration_ms: Optional duration in milliseconds.
+        """
+        event = AuditEvent(
+            timestamp=datetime.utcnow(),
+            session_id=self._session_id,
+            event_type=event_type,
+            data=data or {},
+            duration_ms=duration_ms,
+        )
+        with self._lock:
+            self._events.append(event)
+
+    def measure(self, event_type: str, data: Optional[dict] = None) -> "_PerformanceContext":
+        """Context manager that measures duration and logs an event on exit.
+
+        Args:
+            event_type: Event type string for the logged event.
+            data: Arbitrary event data dict.
+
+        Returns:
+            Context manager that records duration_ms automatically.
+
+        Example:
+            with audit_log.measure("api.call", {"endpoint": "/transcribe"}):
+                result = await api.transcribe(audio)
+        """
+        return _PerformanceContext(self, event_type, data)
+
+    def export_json(self) -> str:
+        """Export all events as a JSON string.
+
+        Returns:
+            JSON string with session_id and list of events.
+        """
+        with self._lock:
+            events_data = [
+                {
+                    "timestamp": e.timestamp.isoformat(),
+                    "session_id": e.session_id,
+                    "event_type": e.event_type,
+                    "data": e.data,
+                    "duration_ms": e.duration_ms,
+                }
+                for e in self._events
+            ]
+        return json.dumps({"session_id": self._session_id, "events": events_data}, indent=2)
+
+    def export_to_file(self, path: Path) -> None:
+        """Export events to a JSON file.
+
+        Args:
+            path: File path to write JSON output to.
+        """
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(self.export_json(), encoding="utf-8")
+
+
+class _PerformanceContext:
+    """Context manager for measuring operation duration."""
+
+    def __init__(self, audit_log: SessionAuditLog, event_type: str, data: Optional[dict]) -> None:
+        self._audit_log = audit_log
+        self._event_type = event_type
+        self._data = data
+        self._start: float = 0.0
+
+    def __enter__(self) -> "_PerformanceContext":
+        self._start = time.monotonic()
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
+        duration_ms = (time.monotonic() - self._start) * 1000
+        event_data = dict(self._data) if self._data else {}
+        if exc_type is not None:
+            event_data["error"] = str(exc_val)
+        self._audit_log.log(self._event_type, event_data, duration_ms=duration_ms)
+        return None  # Don't suppress exceptions
 
 
 def setup_logging(

@@ -10,6 +10,8 @@ from openai_apis._logging import (
     log_performance,
     log_api_call,
     setup_logging,
+    SessionAuditLog,
+    AuditEvent,
 )
 from openai_apis._session import BaseSession, SessionState, InvalidStateTransition
 from openai_apis._config import BaseConfig
@@ -35,6 +37,8 @@ __all__ = [
     "log_performance",
     "log_api_call",
     "setup_logging",
+    "SessionAuditLog",
+    "AuditEvent",
     # Transcription
     "TranscriptionAPI",
     "TranscriptionConfig",

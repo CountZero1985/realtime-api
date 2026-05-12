@@ -9,11 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Per-session audit logging system** - Implemented `SessionAuditLog` and `AuditEvent` classes for structured per-session event tracking:
+  - `SessionAuditLog`: Thread-safe in-memory event storage with automatic timestamp and duration tracking
+  - `AuditEvent`: Dataclass for audit events with timestamp, session_id, event_type, data, and duration_ms
+  - `measure()` context manager for automatic duration tracking (e.g., `with audit_log.measure("api.call"): ...`)
+  - `export_json()` and `export_to_file()` methods for exporting session audit trails
+  - Integrated into `BaseSession` - all sessions now have `session.audit_log` property
+  - Event types use dot-separated naming (e.g., "session.created", "session.state_transition")
+  - Backward-compatible global `log_audit_event()` function maintained for non-session code
+
 - **BaseSession lifecycle management** - Implemented full `BaseSession` abstract class with:
   - State machine with 5 states (created → connecting → connected → disconnecting → closed)
   - Async context manager support (`async with`) for automatic connection/disconnection
   - Automatic UUID session ID generation
-  - Per-session audit logging integration
+  - Per-session audit logging integration via `SessionAuditLog`
   - Event callback registry system (`on`/`_emit` methods)
   - `SessionState` enum and `InvalidStateTransition` exception for state validation
   - Comprehensive unit tests with 100% coverage
