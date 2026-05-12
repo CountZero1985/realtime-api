@@ -11,7 +11,7 @@ from openai_apis._logging import (
     log_api_call,
     setup_logging,
 )
-from openai_apis._session import BaseSession
+from openai_apis._session import BaseSession, SessionState, InvalidStateTransition
 from openai_apis._config import BaseConfig
 
 # Transcription (M2)
@@ -26,6 +26,8 @@ from openai_apis.realtime import RealtimeVoiceAPI, RealtimeConfig, RealtimeAgent
 __all__ = [
     # Infrastructure
     "BaseSession",
+    "SessionState",
+    "InvalidStateTransition",
     "BaseConfig",
     "get_logger",
     "set_correlation_id",
