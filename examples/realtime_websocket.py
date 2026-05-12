@@ -5,8 +5,13 @@ This example demonstrates how to use the RealtimeVoiceAPI for direct
 WebSocket-based voice interactions with OpenAI's Realtime API.
 """
 
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
 import asyncio
-from openai_apis.voice.realtime_session import RealtimeVoiceAPI, RealtimeConfig
+from openai_apis.realtime import RealtimeVoiceAPI, RealtimeConfig
 from dotenv import load_dotenv
 
 load_dotenv()

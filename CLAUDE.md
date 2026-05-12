@@ -12,6 +12,11 @@ A real-time voice agent system integrating OpenAI's Realtime API and OpenAI Agen
 uv sync                              # Install dependencies
 pytest tests/ -v                     # Run tests
 pytest tests/ --cov=openai_apis      # Tests with coverage
+
+# Run example scripts
+python examples/cli_agent.py         # Text-based agent (CLI)
+python examples/voice_agent.py       # Voice-based agent (VoicePipeline)
+python examples/realtime_websocket.py # WebSocket realtime API
 ```
 
 ## Package Structure
@@ -35,6 +40,20 @@ openai_apis/
     ├── config.py
     ├── session.py
     └── tools.py
+
+examples/               # Standalone example applications
+├── agents/             # Agent configurations for examples
+│   ├── prompts/        # System prompts (Hungarian)
+│   ├── tools.py        # Agent tools (websearch, time, display)
+│   └── team.py         # Agent team setup
+├── utils/              # Utility modules
+│   ├── audio_io.py     # Audio recording and playback
+│   └── time_format.py  # Hungarian time formatting
+├── cli_app.py          # CLI interface module
+├── voice_pipeline.py   # Voice pipeline framework
+├── cli_agent.py        # Example: text-based agent
+├── voice_agent.py      # Example: voice-based agent
+└── realtime_websocket.py # Example: realtime WebSocket API
 ```
 
 ## Core Components
@@ -61,6 +80,73 @@ openai_apis/
 - Push-to-talk audio streaming
 - Real-time audio playback
 - Event-driven callbacks
+
+## Example Applications
+
+The `examples/` directory contains standalone runnable examples demonstrating different interaction modes:
+
+### Example Scripts
+
+**`examples/cli_agent.py`** - Text-based CLI agent
+- Interactive text-based conversation with agent
+- Uses `examples.cli_app.CLI` for interface
+- Conversation history tracking
+- Hungarian language support
+
+**`examples/voice_agent.py`** - Voice-based agent
+- Voice input → transcription → agent → TTS → audio output
+- Uses OpenAI Agents SDK `VoicePipeline`
+- Custom `StreamingVoiceWorkflow` for agent integration
+- Push-to-talk recording mode
+
+**`examples/realtime_websocket.py`** - Realtime WebSocket API
+- Direct WebSocket connection to OpenAI Realtime API
+- Low-level API access via `openai_apis.realtime`
+- Real-time audio streaming
+- Event-driven callbacks
+
+### Example Modules
+
+**`examples/cli_app.py`** - CLI interface module
+- `CLI`: Main text-based interface class
+- `CLIConfig`: Configuration for CLI behavior
+- `ConversationHistory`: History management
+- Streaming response support
+
+**`examples/voice_pipeline.py`** - Voice pipeline framework
+- `AgentFrameworkAPI`: High-level voice interaction API
+- `StreamingVoiceWorkflow`: Custom workflow for agent integration
+- `VoiceConfig`: Voice pipeline configuration
+- Callback support for transcription, response events
+
+**`examples/agents/`** - Agent configurations
+- `team.py`: `assisstant_agent` and `tools_agent` definitions
+- `tools.py`: Agent tools (websearch, time, display)
+- `prompts/`: System prompts in Hungarian
+
+**`examples/utils/`** - Utility modules
+- `audio_io.py`: `record_audio()` and `AudioPlayer` for 24kHz audio
+- `time_format.py`: `magyar_ido_szoveggel()` for Hungarian time strings
+
+### Running Examples
+
+All examples use `sys.path.insert` to enable cross-example imports:
+
+```python
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from examples.cli_app import CLI
+from examples.agents.team import assisstant_agent
+```
+
+Run from project root:
+```bash
+python examples/cli_agent.py
+python examples/voice_agent.py
+python examples/realtime_websocket.py
+```
 
 ### Shared Infrastructure
 
@@ -107,6 +193,7 @@ openai_apis/
 
 ### Import Patterns
 
+**Library imports (openai_apis package):**
 ```python
 # From package root - recommended
 from openai_apis import TranscriptionAPI, TranscriptionConfig
@@ -129,6 +216,29 @@ from openai_apis import get_logger, log_audit_event, log_performance, set_correl
 
 # Per-session audit logging
 from openai_apis import SessionAuditLog, AuditEvent
+```
+
+**Example imports (examples/ directory):**
+```python
+# Agent configuration and tools
+from examples.agents.team import assisstant_agent, tools_agent
+from examples.agents.tools import websearch_tool, get_current_time, display_text_terminal
+from examples.agents.prompts import assisstant_prompt, tts_instruct_prompt
+
+# CLI interface
+from examples.cli_app import CLI, CLIConfig, ConversationHistory
+
+# Voice pipeline
+from examples.voice_pipeline import (
+    AgentFrameworkAPI,
+    StreamingVoiceWorkflow,
+    VoiceConfig,
+    start_voice_agent
+)
+
+# Utilities
+from examples.utils.audio_io import record_audio, AudioPlayer
+from examples.utils.time_format import magyar_ido_szoveggel
 ```
 
 ### Configuration Pattern
