@@ -15,12 +15,13 @@ from pathlib import Path
 from unittest.mock import Mock, AsyncMock, patch, MagicMock
 
 # Import all APIs
-from openai_apis.cli.interface import CLI, CLIConfig
-from openai_apis.voice.agent_framework import AgentFrameworkAPI, VoiceConfig
-from openai_apis.voice.realtime_session import RealtimeVoiceAPI, RealtimeConfig, RealtimeAgentState
-from openai_apis.audio.transcription import TranscriptionAPI, TranscriptionConfig
-from openai_apis.audio.synthesis import TTSAPI, TTSConfig
-from agents import Agent
+# NOTE: CLI and AgentFramework modules removed in issue #4 - tests using them are skipped
+# from openai_apis.cli.interface import CLI, CLIConfig
+# from openai_apis.voice.agent_framework import AgentFrameworkAPI, VoiceConfig
+# from agents import Agent
+from openai_apis.realtime import RealtimeVoiceAPI, RealtimeConfig, RealtimeAgentState
+from openai_apis.transcription import TranscriptionAPI, TranscriptionConfig
+from openai_apis.tts import TTSAPI, TTSConfig
 
 
 # Fixtures
@@ -61,6 +62,7 @@ def temp_wav_file(sample_audio):
 
 # Cross-Module Integration Tests
 
+@pytest.mark.skip(reason="CLI module removed in issue #4")
 class TestCLIWithAgents:
     """Test CLI integration with agent systems."""
 
@@ -140,6 +142,7 @@ class TestTranscriptionTTSPipeline:
                 pass
 
 
+@pytest.mark.skip(reason="AgentFramework module removed in issue #4")
 class TestAgentFrameworkWithTranscriptionTTS:
     """Test agent framework integrated with transcription and TTS."""
 
