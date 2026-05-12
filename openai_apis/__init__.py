@@ -22,8 +22,13 @@ from openai_apis.transcription import TranscriptionAPI, TranscriptionConfig
 # TTS (M1)
 from openai_apis.tts import TTSAPI, TTSConfig, OpenAITTSProvider, BaseTTSProvider
 
-# Realtime (M3)
-from openai_apis.realtime import RealtimeVoiceAPI, RealtimeConfig, RealtimeAgentState
+# Realtime (M3) - Optional: requires audio dependencies
+try:
+    from openai_apis.realtime import RealtimeVoiceAPI, RealtimeConfig, RealtimeAgentState
+except ImportError:
+    RealtimeVoiceAPI = None
+    RealtimeConfig = None
+    RealtimeAgentState = None
 
 __all__ = [
     # Infrastructure

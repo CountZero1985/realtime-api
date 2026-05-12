@@ -26,9 +26,20 @@ Example usage:
 
 import os
 import json
-import websocket
-import numpy as np
-import sounddevice as sd
+try:
+    import websocket
+except ImportError:
+    websocket = None
+
+try:
+    import numpy as np
+except ImportError:
+    np = None
+
+try:
+    import sounddevice as sd
+except ImportError:
+    sd = None
 import threading
 import time
 import base64
@@ -89,7 +100,7 @@ class RealtimeVoiceAPI:
         api_key: Optional[str] = None,
         # Event callbacks
         on_transcription: Optional[Callable[[str], None]] = None,
-        on_response_audio: Optional[Callable[[np.ndarray], None]] = None,
+        on_response_audio: Optional[Callable[["np.ndarray"], None]] = None,
         on_response_text: Optional[Callable[[str], None]] = None,
         on_error: Optional[Callable[[str], None]] = None,
         on_session_created: Optional[Callable[[str], None]] = None,
@@ -109,6 +120,7 @@ class RealtimeVoiceAPI:
             on_session_created: Callback when session is created (receives session_id).
             on_session_updated: Callback when session is updated/configured.
         """
+        self._check_realtime_deps()
         load_dotenv()
 
         self.config = config or RealtimeConfig()
@@ -160,6 +172,21 @@ class RealtimeVoiceAPI:
     def set_output_device(self, device_index: int) -> None:
         """Set the audio output device by index."""
         self._output_device = device_index
+
+    def _check_realtime_deps(self) -> None:
+        """Check if required realtime dependencies are installed."""
+        missing = []
+        if websocket is None:
+            missing.append("websocket-client")
+        if np is None:
+            missing.append("numpy")
+        if sd is None:
+            missing.append("sounddevice")
+        if missing:
+            raise ImportError(
+                f"Missing dependencies for realtime module: {', '.join(missing)}. "
+                "Install with: pip install openai-apis[audio]"
+            )
 
     def _create_session_update_event(self) -> Dict[str, Any]:
         """Create session.update event from config."""
@@ -404,7 +431,7 @@ class RealtimeVoiceAPI:
                 else:
                     print("[WARN] No audio chunks sent, skipping commit")
 
-    def _send_audio_chunk(self, ws: websocket.WebSocketApp, chunk: np.ndarray) -> None:
+    def _send_audio_chunk(self, ws: "websocket.WebSocketApp", chunk: "np.ndarray") -> None:
         """Send audio chunk via input_audio_buffer.append event."""
         audio_b64 = base64.b64encode(chunk.tobytes()).decode("ascii")
         event = {

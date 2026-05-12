@@ -1,14 +1,17 @@
 """Abstract base class for TTS providers."""
 from abc import ABC, abstractmethod
 from typing import Optional, AsyncIterator
-import numpy as np
+try:
+    import numpy as np
+except ImportError:
+    np = None
 
 
 class BaseTTSProvider(ABC):
     """Abstract base class for TTS providers."""
 
     @abstractmethod
-    async def synthesize(self, text: str, voice: Optional[str] = None, speed: Optional[float] = None) -> np.ndarray:
+    async def synthesize(self, text: str, voice: Optional[str] = None, speed: Optional[float] = None) -> "np.ndarray":
         """
         Synthesize text to speech as numpy array.
 

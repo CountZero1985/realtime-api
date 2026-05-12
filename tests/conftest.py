@@ -2,7 +2,10 @@
 
 import pytest
 from unittest.mock import AsyncMock, MagicMock
-from agents import Agent
+try:
+    from agents import Agent
+except ImportError:
+    Agent = None
 
 @pytest.fixture
 def mock_openai_client():
@@ -13,6 +16,8 @@ def mock_openai_client():
 @pytest.fixture
 def mock_agent():
     """Mock agent for testing."""
+    if Agent is None:
+        pytest.skip("openai-agents not installed")
     agent = MagicMock(spec=Agent)
     agent.name = "test_agent"
     return agent
