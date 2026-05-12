@@ -42,7 +42,7 @@ import logging
 from abc import ABC, abstractmethod
 from typing import Optional, Callable, Any
 from openai_apis._config import BaseConfig
-from openai_apis._logging import get_logger, log_audit_event
+from openai_apis._logging import get_logger, log_audit_event, SessionAuditLog
 
 
 class SessionState(enum.Enum):
@@ -118,12 +118,11 @@ class BaseSession(ABC):
         self._state: SessionState = SessionState.CREATED
         self._callbacks: dict[str, list[Callable]] = {}
         self._logger: logging.Logger = get_logger(f"{self.__class__.__module__}.{self.__class__.__name__}")
+        self._audit_log = SessionAuditLog(self._session_id)
 
-        log_audit_event(
-            event_type="session",
-            action="session_created",
-            session_id=self._session_id,
-            details={"config_type": type(self._config).__name__},
+        self._audit_log.log(
+            "session.created",
+            {"config_type": type(self._config).__name__},
         )
 
     @property
@@ -135,6 +134,11 @@ class BaseSession(ABC):
     def state(self) -> SessionState:
         """Get the current session state."""
         return self._state
+
+    @property
+    def audit_log(self) -> SessionAuditLog:
+        """Get the per-session audit log."""
+        return self._audit_log
 
     def _transition_to(self, new_state: SessionState) -> None:
         """Transition to a new state with validation.
@@ -155,11 +159,9 @@ class BaseSession(ABC):
         self._logger.debug(
             f"Session {self._session_id}: {old_state.value} -> {new_state.value}"
         )
-        log_audit_event(
-            event_type="session",
-            action="state_transition",
-            session_id=self._session_id,
-            details={"from": old_state.value, "to": new_state.value},
+        self._audit_log.log(
+            "session.state_transition",
+            {"from": old_state.value, "to": new_state.value},
         )
         self._emit("state_changed", {"from": old_state, "to": new_state})
 
@@ -206,11 +208,9 @@ class BaseSession(ABC):
         finally:
             if self._state != SessionState.CLOSED:
                 self._state = SessionState.CLOSED
-            log_audit_event(
-                event_type="session",
-                action="session_closed",
-                session_id=self._session_id,
-                details={"had_error": exc_type is not None},
+            self._audit_log.log(
+                "session.closed",
+                {"had_error": exc_type is not None},
             )
             self._emit("closed", {"session_id": self._session_id})
         return None  # Don't suppress exceptions
