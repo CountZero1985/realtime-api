@@ -69,9 +69,11 @@ openai_apis/
 - Holds common config like `api_key`, `timeout`, etc.
 
 **`_logging.py`**: Centralized logging infrastructure
+- **Per-session audit logging**: `SessionAuditLog` and `AuditEvent` classes for in-memory per-session event tracking
+- **Global audit trail**: Separate `audit.log` file for compliance tracking
 - Structured JSON logs to `logs/app.log` and `logs/error.log`
-- Audit trail to `logs/audit.log`
 - Correlation ID tracking for request tracing
+- Classes: `SessionAuditLog`, `AuditEvent`, `_PerformanceContext`
 - Functions: `get_logger()`, `log_audit_event()`, `log_performance()`, `set_correlation_id()`
 
 **`_session.py`**: `BaseSession` abstract base class
@@ -80,7 +82,8 @@ openai_apis/
 - Async context manager support (`async with`)
 - Automatic UUID session ID generation (`session_id` property)
 - Event callback system (`on(event, callback)` and `_emit(event, data)`)
-- Per-session audit logging
+- **Per-session audit logging** via `session.audit_log` property (returns `SessionAuditLog`)
+- Built-in session events: `session.created`, `session.state_transition`, `session.closed`
 - Abstract methods: `_connect()` and `_disconnect()` (subclasses must implement)
 - **InvalidStateTransition** exception for invalid state transitions
 
@@ -104,6 +107,9 @@ from openai_apis import BaseSession, SessionState, InvalidStateTransition, BaseC
 
 # Logging infrastructure
 from openai_apis import get_logger, log_audit_event, log_performance, set_correlation_id
+
+# Per-session audit logging
+from openai_apis import SessionAuditLog, AuditEvent
 ```
 
 ### Configuration Pattern
@@ -132,12 +138,23 @@ api = TranscriptionAPI(config=config)
 - Channels: 1 (mono)
 - Ensure cleanup in finally blocks when working with audio streams
 
-### Logging
+### Logging and Audit Trail
+
+**Per-session audit logging:**
+- Each `BaseSession` has a `session.audit_log` property (type: `SessionAuditLog`)
+- Thread-safe in-memory event storage with automatic timestamps
+- Use `session.audit_log.log(event_type, data, duration_ms)` to log events
+- Use `with session.audit_log.measure(event_type, data):` for automatic duration tracking
+- Export via `export_json()` or `export_to_file(path)`
+- Built-in events: `session.created`, `session.state_transition`, `session.closed`
+
+**Global logging:**
 - Structured JSON logs to `logs/app.log` and `logs/error.log`
-- Audit trail to `logs/audit.log`
+- Global audit trail to `logs/audit.log` (for non-session events)
 - Correlation ID tracking for request tracing
 - Use `get_logger(__name__)` in modules for consistent logging
-- See `docs/LOGGING_AUDIT_TRAIL.md` for details
+- Use global `log_audit_event()` for backward compatibility or non-session events
+- See `docs/LOGGING_AUDIT_TRAIL.md` for complete documentation
 
 ### Implementing Custom Sessions
 
@@ -164,8 +181,19 @@ class MyCustomSession(BaseSession):
 # Usage with automatic lifecycle management
 async with MyCustomSession() as session:
     # Session is now in CONNECTED state
-    # Do work with session
-    pass
+
+    # Log custom audit events
+    session.audit_log.log("custom.event", {"key": "value"})
+
+    # Measure operation duration automatically
+    with session.audit_log.measure("api.call", {"endpoint": "/test"}):
+        result = await some_operation()
+
+    # Access audit events
+    events = session.audit_log.events  # list[AuditEvent]
+
+    # Export audit trail
+    session.audit_log.export_to_file(Path("session_audit.json"))
 # Session is now CLOSED and cleaned up
 ```
 

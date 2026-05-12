@@ -173,6 +173,40 @@ except InvalidStateTransition as e:
 - `DISCONNECTING` - Cleanup in progress
 - `CLOSED` - Terminal state (no further transitions)
 
+### Per-Session Audit Logging
+
+Each session has its own structured audit log accessible via the `audit_log` property:
+
+```python
+from openai_apis import BaseSession, SessionAuditLog, AuditEvent
+
+async with MySession() as session:
+    # Log custom events
+    session.audit_log.log("api.call", {"endpoint": "/transcribe"})
+
+    # Measure operation duration automatically
+    with session.audit_log.measure("processing", {"type": "audio"}):
+        # Operation is timed automatically
+        result = await process_data()
+
+    # Access logged events
+    events = session.audit_log.events  # Returns list[AuditEvent]
+    for event in events:
+        print(f"{event.event_type}: {event.duration_ms}ms")
+
+    # Export session audit trail
+    json_str = session.audit_log.export_json()
+
+    # Or save to file
+    from pathlib import Path
+    session.audit_log.export_to_file(Path("audit_trail.json"))
+```
+
+**Built-in session events:**
+- `session.created` - Session initialized
+- `session.state_transition` - State change occurred
+- `session.closed` - Session terminated
+
 ### Testing
 
 ```bash
