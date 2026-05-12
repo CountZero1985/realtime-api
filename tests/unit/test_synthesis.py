@@ -66,8 +66,10 @@ def temp_output_file():
 class TestTTSConfig:
     """Test TTSConfig dataclass."""
 
-    def test_default_config(self):
+    def test_default_config(self, monkeypatch):
         """Test default configuration values."""
+        # Clear env var to test default None behavior
+        monkeypatch.delenv("OPENAI_API_KEY", raising=False)
         config = TTSConfig()
         assert config.model == "gpt-4o-mini-tts"
         assert config.voice == "ash"

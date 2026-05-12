@@ -85,8 +85,10 @@ def temp_wav_file(sample_audio):
 class TestTranscriptionConfig:
     """Test TranscriptionConfig dataclass."""
 
-    def test_default_config(self):
+    def test_default_config(self, monkeypatch):
         """Test default configuration values."""
+        # Clear env var to test default None behavior
+        monkeypatch.delenv("OPENAI_API_KEY", raising=False)
         config = TranscriptionConfig()
         assert config.model == "gpt-4o-mini-transcribe"
         assert config.language == "hu"
