@@ -63,9 +63,26 @@ openai_apis/
 - Event-driven callbacks
 
 ### Shared Infrastructure
-- **`_config.py`**: `BaseConfig` dataclass for all API sessions
-- **`_logging.py`**: Centralized logging with audit trail, performance tracking, correlation IDs
-- **`_session.py`**: `BaseSession` abstract base class (session lifecycle management)
+
+**`_config.py`**: `BaseConfig` dataclass
+- Base configuration class for all API sessions
+- Holds common config like `api_key`, `timeout`, etc.
+
+**`_logging.py`**: Centralized logging infrastructure
+- Structured JSON logs to `logs/app.log` and `logs/error.log`
+- Audit trail to `logs/audit.log`
+- Correlation ID tracking for request tracing
+- Functions: `get_logger()`, `log_audit_event()`, `log_performance()`, `set_correlation_id()`
+
+**`_session.py`**: `BaseSession` abstract base class
+- Session lifecycle management with state machine
+- **SessionState enum**: CREATED → CONNECTING → CONNECTED → DISCONNECTING → CLOSED
+- Async context manager support (`async with`)
+- Automatic UUID session ID generation (`session_id` property)
+- Event callback system (`on(event, callback)` and `_emit(event, data)`)
+- Per-session audit logging
+- Abstract methods: `_connect()` and `_disconnect()` (subclasses must implement)
+- **InvalidStateTransition** exception for invalid state transitions
 
 ## Development Notes
 
@@ -81,6 +98,9 @@ from openai_apis import RealtimeVoiceAPI, RealtimeConfig, RealtimeAgentState
 from openai_apis.transcription import TranscriptionAPI, TranscriptionConfig
 from openai_apis.tts import TTSAPI, TTSConfig, OpenAITTSProvider, BaseTTSProvider
 from openai_apis.realtime import RealtimeVoiceAPI, RealtimeConfig, RealtimeAgentState
+
+# Session infrastructure
+from openai_apis import BaseSession, SessionState, InvalidStateTransition, BaseConfig
 
 # Logging infrastructure
 from openai_apis import get_logger, log_audit_event, log_performance, set_correlation_id
@@ -118,6 +138,43 @@ api = TranscriptionAPI(config=config)
 - Correlation ID tracking for request tracing
 - Use `get_logger(__name__)` in modules for consistent logging
 - See `docs/LOGGING_AUDIT_TRAIL.md` for details
+
+### Implementing Custom Sessions
+
+All API sessions should inherit from `BaseSession`:
+
+```python
+from openai_apis import BaseSession, BaseConfig
+
+class MyCustomSession(BaseSession):
+    def __init__(self, config: Optional[BaseConfig] = None):
+        super().__init__(config)
+        # Your initialization here
+
+    async def _connect(self) -> None:
+        """Establish connection (called automatically in async with)."""
+        # Connection logic here
+        pass
+
+    async def _disconnect(self) -> None:
+        """Tear down connection (called automatically on exit)."""
+        # Cleanup logic here
+        pass
+
+# Usage with automatic lifecycle management
+async with MyCustomSession() as session:
+    # Session is now in CONNECTED state
+    # Do work with session
+    pass
+# Session is now CLOSED and cleaned up
+```
+
+**State machine rules:**
+- CREATED → CONNECTING → CONNECTED → DISCONNECTING → CLOSED (normal flow)
+- CREATED → CLOSED (direct close without connecting)
+- CLOSED is terminal (no transitions out)
+- Use `session.state` to check current state
+- Use `session.on("state_changed", callback)` to monitor transitions
 
 ### Adding New TTS Providers
 
