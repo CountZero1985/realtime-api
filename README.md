@@ -8,6 +8,7 @@ A production-ready real-time voice agent system built with OpenAI's Realtime API
   - **Transcription** - Speech-to-text with Whisper models
   - **TTS** - Text-to-speech with multiple voice options
   - **Realtime** - WebSocket-based realtime voice interactions
+- **Session Lifecycle Management** - BaseSession with state machine, async context manager support
 - **Hungarian Language Support** - Optimized for Hungarian with extensibility to 90+ languages
 - **Clean, Stateless APIs** - Simple, predictable interfaces with no hidden state
 - **Provider-Based Architecture** - Extensible TTS system supporting multiple providers
@@ -136,6 +137,41 @@ api = RealtimeVoiceAPI(
 # Run session (blocking)
 api.run_session_sync()
 ```
+
+### Session Lifecycle Management
+
+All API sessions inherit from `BaseSession`, which provides automatic lifecycle management:
+
+```python
+from openai_apis import BaseSession, SessionState, InvalidStateTransition
+
+# Using async context manager (recommended)
+async with MySession() as session:
+    # Session automatically transitions: CREATED → CONNECTING → CONNECTED
+    print(session.state)  # SessionState.CONNECTED
+    print(session.session_id)  # Auto-generated UUID
+    # Do work...
+# Session automatically transitions: DISCONNECTING → CLOSED
+
+# Event callbacks
+def on_state_change(data):
+    print(f"State changed: {data['from']} → {data['to']}")
+
+session.on("state_changed", on_state_change)
+
+# State transitions are validated
+try:
+    session._transition_to(SessionState.CONNECTED)  # If not valid
+except InvalidStateTransition as e:
+    print(f"Invalid transition: {e}")
+```
+
+**Session States:**
+- `CREATED` - Initial state after construction
+- `CONNECTING` - Connection in progress
+- `CONNECTED` - Active session
+- `DISCONNECTING` - Cleanup in progress
+- `CLOSED` - Terminal state (no further transitions)
 
 ### Testing
 

@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **BaseSession lifecycle management** - Implemented full `BaseSession` abstract class with:
+  - State machine with 5 states (created → connecting → connected → disconnecting → closed)
+  - Async context manager support (`async with`) for automatic connection/disconnection
+  - Automatic UUID session ID generation
+  - Per-session audit logging integration
+  - Event callback registry system (`on`/`_emit` methods)
+  - `SessionState` enum and `InvalidStateTransition` exception for state validation
+  - Comprehensive unit tests with 100% coverage
+
 ### Changed
 
 - **Major package restructuring** - Reorganized `openai_apis` package from flat 7-subpackage structure to clean 3-module library architecture:
