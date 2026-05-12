@@ -64,9 +64,25 @@ openai_apis/
 
 ### Shared Infrastructure
 
-**`_config.py`**: `BaseConfig` dataclass
-- Base configuration class for all API sessions
-- Holds common config like `api_key`, `timeout`, etc.
+**`_config.py`**: Configuration classes
+- **`BaseConfig`**: Base configuration class for all API sessions
+  - `api_key`: OpenAI API key (reads from OPENAI_API_KEY env var if None)
+  - `timeout`: Request timeout in seconds (default: 30.0)
+  - `audio_format`: Audio format specification (default: AudioFormat())
+  - `__post_init__` validation ensures timeout is positive and loads API key from environment
+- **`AudioFormat`**: Frozen dataclass for immutable audio format specifications
+  - `sample_rate`: Audio sample rate in Hz (default: 24000)
+  - `channels`: Number of audio channels (default: 1, mono)
+  - `dtype`: NumPy dtype, valid: "int16", "float32" (default: "int16")
+  - `encoding`: Audio encoding, valid: "pcm16", "g711_ulaw", "g711_alaw" (default: "pcm16")
+  - `__post_init__` validation ensures all parameters are valid
+- **`VADConfig`**: Voice Activity Detection configuration
+  - `mode`: VAD mode - "server_vad", "semantic_vad", or "disabled" (default: "server_vad")
+  - `threshold`: Activation threshold for server_vad (0.0-1.0, default: 0.5)
+  - `prefix_padding_ms`: Audio padding before speech (default: 300)
+  - `silence_duration_ms`: Silence duration to end turn (default: 500)
+  - `eagerness`: Eagerness for semantic_vad - "low", "medium", "high", "auto" (default: "auto")
+  - `__post_init__` validation ensures mode-specific parameters are valid
 
 **`_logging.py`**: Centralized logging infrastructure
 - **Per-session audit logging**: `SessionAuditLog` and `AuditEvent` classes for in-memory per-session event tracking
@@ -105,6 +121,9 @@ from openai_apis.realtime import RealtimeVoiceAPI, RealtimeConfig, RealtimeAgent
 # Session infrastructure
 from openai_apis import BaseSession, SessionState, InvalidStateTransition, BaseConfig
 
+# Configuration classes
+from openai_apis import AudioFormat, VADConfig
+
 # Logging infrastructure
 from openai_apis import get_logger, log_audit_event, log_performance, set_correlation_id
 
@@ -117,9 +136,9 @@ from openai_apis import SessionAuditLog, AuditEvent
 All API modules follow a consistent configuration pattern:
 
 ```python
-from openai_apis import TranscriptionAPI, TranscriptionConfig
+from openai_apis import TranscriptionAPI, TranscriptionConfig, AudioFormat
 
-# Use defaults
+# Use defaults (24kHz, mono, int16, pcm16 audio)
 api = TranscriptionAPI()
 
 # Or customize
@@ -130,6 +149,39 @@ config = TranscriptionConfig(
     timeout=60.0
 )
 api = TranscriptionAPI(config=config)
+
+# Custom audio format (inherited by all configs)
+custom_format = AudioFormat(sample_rate=48000, channels=2, dtype="float32")
+config = TranscriptionConfig(audio_format=custom_format)
+api = TranscriptionAPI(config=config)
+```
+
+**AudioFormat usage:**
+```python
+from openai_apis import AudioFormat
+
+# Use defaults (24kHz, mono, int16, pcm16)
+fmt = AudioFormat()
+
+# Custom format for higher quality
+fmt = AudioFormat(sample_rate=48000, channels=2, dtype="float32", encoding="pcm16")
+
+# AudioFormat is immutable (frozen dataclass)
+# fmt.sample_rate = 16000  # Raises FrozenInstanceError
+```
+
+**VADConfig usage:**
+```python
+from openai_apis import VADConfig
+
+# Server-side VAD (default)
+vad = VADConfig(mode="server_vad", threshold=0.7, silence_duration_ms=800)
+
+# Semantic turn detection
+vad = VADConfig(mode="semantic_vad", eagerness="high")
+
+# Disable VAD for continuous processing
+vad = VADConfig(mode="disabled")
 ```
 
 ### When Working with Audio
