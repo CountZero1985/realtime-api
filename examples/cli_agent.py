@@ -5,8 +5,14 @@ This example demonstrates how to use the CLI interface for text-based
 interactions with an AI assistant in Hungarian.
 """
 
-from openai_apis.cli.interface import CLI
-from openai_apis.agents.team import assisstant_agent
+import sys
+from pathlib import Path
+
+# Add project root to path for examples imports
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from examples.cli_app import CLI
+from examples.agents.team import assisstant_agent
 from dotenv import load_dotenv
 
 load_dotenv()

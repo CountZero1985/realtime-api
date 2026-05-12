@@ -5,13 +5,18 @@ This example demonstrates how to use the AgentFrameworkAPI for voice-based
 interactions with an AI assistant in Hungarian.
 """
 
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
 import asyncio
-from agents.voice import VoicePipeline, VoicePipelineConfig, STTModelSettings, TTSModelSettings, AudioInput
-from openai_apis.voice.workflow import StreamingVoiceWorkflow
-from openai_apis.agents.team import assisstant_agent
-from openai_apis.utils.audio_io import record_audio, AudioPlayer
-from dotenv import load_dotenv
 import numpy as np
+from agents.voice import VoicePipeline, VoicePipelineConfig, STTModelSettings, TTSModelSettings, AudioInput
+from examples.voice_pipeline import StreamingVoiceWorkflow
+from examples.agents.team import assisstant_agent
+from examples.utils.audio_io import record_audio, AudioPlayer
+from dotenv import load_dotenv
 
 load_dotenv()
 
