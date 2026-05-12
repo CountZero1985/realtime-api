@@ -55,9 +55,9 @@ uv sync        # recommended
 ### Transcription (Speech-to-Text)
 
 ```python
-from openai_apis import TranscriptionAPI, TranscriptionConfig
+from openai_apis import TranscriptionAPI, TranscriptionConfig, AudioFormat
 
-# Basic usage with defaults
+# Basic usage with defaults (24kHz, mono, int16, pcm16)
 api = TranscriptionAPI()
 transcript = await api.transcribe_file("audio.wav")
 print(transcript)
@@ -68,6 +68,11 @@ config = TranscriptionConfig(
     language="hu",
     temperature=0.0
 )
+api = TranscriptionAPI(config=config)
+
+# Custom audio format
+audio_format = AudioFormat(sample_rate=48000, channels=2)
+config = TranscriptionConfig(audio_format=audio_format)
 api = TranscriptionAPI(config=config)
 
 # From numpy array
@@ -82,9 +87,9 @@ transcript = api.transcribe_file_sync("audio.wav")
 ### Text-to-Speech (TTS)
 
 ```python
-from openai_apis import TTSAPI, TTSConfig
+from openai_apis import TTSAPI, TTSConfig, AudioFormat
 
-# Basic usage
+# Basic usage (defaults to 24kHz, mono, int16, pcm16)
 api = TTSAPI()
 audio = await api.synthesize("Szia! Hogy vagy?")
 # Returns numpy array ready for playback
@@ -95,6 +100,11 @@ config = TTSConfig(
     speed=1.5,
     model="gpt-4o-mini-tts"
 )
+api = TTSAPI(config=config)
+
+# Custom audio format for higher quality
+audio_format = AudioFormat(sample_rate=48000, dtype="float32")
+config = TTSConfig(audio_format=audio_format)
 api = TTSAPI(config=config)
 
 # Save to file
@@ -172,6 +182,62 @@ except InvalidStateTransition as e:
 - `CONNECTED` - Active session
 - `DISCONNECTING` - Cleanup in progress
 - `CLOSED` - Terminal state (no further transitions)
+
+### Audio Format Configuration
+
+All API modules support customizable audio formats via `AudioFormat`:
+
+```python
+from openai_apis import AudioFormat, TranscriptionConfig, TTSAPI
+
+# Default format (24kHz, mono, int16, pcm16)
+fmt = AudioFormat()
+
+# Custom format for higher quality
+fmt = AudioFormat(
+    sample_rate=48000,  # 48kHz sample rate
+    channels=2,         # Stereo
+    dtype="float32",    # Floating-point audio
+    encoding="pcm16"    # PCM encoding
+)
+
+# Use with any API configuration
+config = TranscriptionConfig(audio_format=fmt)
+
+# AudioFormat is immutable (frozen dataclass)
+# This ensures format specs can't be accidentally modified
+```
+
+**Supported values:**
+- `sample_rate`: Any positive integer (Hz). Default: 24000
+- `channels`: Any positive integer. Default: 1 (mono)
+- `dtype`: "int16" or "float32". Default: "int16"
+- `encoding`: "pcm16", "g711_ulaw", or "g711_alaw". Default: "pcm16"
+
+### Voice Activity Detection (VAD) Configuration
+
+Configure voice activity detection for realtime sessions:
+
+```python
+from openai_apis import VADConfig
+
+# Server-side VAD (silence detection)
+vad = VADConfig(
+    mode="server_vad",
+    threshold=0.7,              # Sensitivity (0.0-1.0)
+    prefix_padding_ms=300,      # Audio before speech
+    silence_duration_ms=800     # Silence to end turn
+)
+
+# Semantic turn detection
+vad = VADConfig(
+    mode="semantic_vad",
+    eagerness="high"  # "low", "medium", "high", or "auto"
+)
+
+# Disable VAD for continuous processing
+vad = VADConfig(mode="disabled")
+```
 
 ### Per-Session Audit Logging
 

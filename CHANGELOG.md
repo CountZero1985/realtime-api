@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **AudioFormat and VADConfig configuration classes** - Added shared configuration types to `_config.py`:
+  - `AudioFormat`: Frozen dataclass for immutable audio format specifications (sample_rate, channels, dtype, encoding)
+  - `VADConfig`: Voice Activity Detection configuration with support for server_vad, semantic_vad, and disabled modes
+  - `BaseConfig` extended with `audio_format` field (defaults to 24kHz, mono, int16, pcm16)
+  - `__post_init__` validation for all configuration classes ensures invalid values are caught early
+  - All submodule configs (`TranscriptionConfig`, `TTSConfig`, `RealtimeConfig`) automatically inherit `audio_format`
+  - Comprehensive unit tests in `tests/unit/test_config.py` with 100% coverage
+
 - **Per-session audit logging system** - Implemented `SessionAuditLog` and `AuditEvent` classes for structured per-session event tracking:
   - `SessionAuditLog`: Thread-safe in-memory event storage with automatic timestamp and duration tracking
   - `AuditEvent`: Dataclass for audit events with timestamp, session_id, event_type, data, and duration_ms

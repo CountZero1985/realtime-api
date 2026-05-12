@@ -31,5 +31,6 @@ class RealtimeConfig(BaseConfig):
     max_response_output_tokens: str = "inf"
 
     def __post_init__(self):
+        super().__post_init__()
         if self.modalities is None:
             self.modalities = ["text", "audio"]
