@@ -1,3 +1,16 @@
+"""Hungarian time formatting utility.
+
+This module provides natural Hungarian language time formatting,
+converting hours and minutes to colloquial Hungarian time expressions.
+
+Example:
+    >>> magyar_ido_szoveggel(14, 30)
+    'fél három'
+    >>> magyar_ido_szoveggel(9, 15)
+    'negyed tíz'
+"""
+
+
 def magyar_ido_szoveggel(ora: str, perc: str) -> str:
     """
     Visszaadja az adott órát és percet magyar nyelven szöveges formában.

@@ -1,3 +1,13 @@
+"""Agent tools for example applications.
+
+This module provides tools that can be used by agents:
+- websearch_tool: Web search with low context size for quick results
+- get_current_time: Returns current time formatted in Hungarian
+- display_text_terminal: Displays text to the terminal for user visibility
+
+All tools are designed to work with Hungarian language agents.
+"""
+
 from agents import WebSearchTool
 from agents import function_tool
 from examples.utils.time_format import magyar_ido_szoveggel

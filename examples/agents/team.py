@@ -1,3 +1,13 @@
+"""Agent team configuration for examples.
+
+This module defines the agent team used in example applications:
+- assisstant_agent: Main Hungarian-language assistant with time and display tools
+- tools_agent: Specialized agent for web search queries
+
+The agents are configured to work together, with the main assistant delegating
+web search tasks to the tools agent.
+"""
+
 from agents import Agent
 from examples.agents.prompts.voice_assistant import assisstant_prompt
 from examples.agents.tools import display_text_terminal, get_current_time, websearch_tool

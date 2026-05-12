@@ -46,9 +46,27 @@ uv sync        # recommended
 # or: pip install -e .
 ```
 
-### Running the Application
+### Running the Examples
 
-**Note:** The example applications (`voice_agent.py`, `cli_agent.py`, `realtime_websocket.py`) are currently being refactored to work with the new package structure. They will be updated in a future release.
+The project includes three example applications demonstrating different interaction modes:
+
+**Text-based CLI Agent:**
+```bash
+python examples/cli_agent.py
+```
+Interactive text-based conversation with the AI assistant in Hungarian.
+
+**Voice-based Agent:**
+```bash
+python examples/voice_agent.py
+```
+Voice input → transcription → agent → TTS → audio output pipeline.
+
+**Realtime WebSocket API:**
+```bash
+python examples/realtime_websocket.py
+```
+Direct WebSocket connection to OpenAI Realtime API with real-time audio streaming.
 
 ## API Usage
 
@@ -272,6 +290,43 @@ async with MySession() as session:
 - `session.created` - Session initialized
 - `session.state_transition` - State change occurred
 - `session.closed` - Session terminated
+
+## Example Applications
+
+The `examples/` directory contains standalone applications demonstrating the APIs:
+
+### Directory Structure
+
+```
+examples/
+├── agents/                  # Agent configurations
+│   ├── prompts/            # System prompts (Hungarian)
+│   │   ├── voice_assistant.py
+│   │   └── tts.py
+│   ├── tools.py            # Agent tools (websearch, time, display)
+│   └── team.py             # Agent team setup
+├── utils/                   # Utility modules
+│   ├── audio_io.py         # Audio recording and playback
+│   └── time_format.py      # Hungarian time formatting
+├── cli_app.py              # CLI interface module
+├── voice_pipeline.py       # Voice pipeline framework
+├── cli_agent.py            # Example: text-based agent
+├── voice_agent.py          # Example: voice-based agent
+└── realtime_websocket.py   # Example: realtime WebSocket API
+```
+
+### Example Usage
+
+**Import pattern in examples:**
+```python
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from examples.cli_app import CLI
+from examples.agents.team import assisstant_agent
+from examples.utils.audio_io import record_audio, AudioPlayer
+```
 
 ### Testing
 

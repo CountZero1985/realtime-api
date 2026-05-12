@@ -1,3 +1,12 @@
+"""Audio I/O utilities for voice examples.
+
+This module provides simple utilities for recording and playing audio:
+- record_audio(): Push-to-talk recording at 24kHz mono int16
+- AudioPlayer: Context manager for streaming audio playback
+
+Both utilities are configured for the OpenAI APIs' standard 24kHz mono format.
+"""
+
 import numpy as np
 import sounddevice as sd
 

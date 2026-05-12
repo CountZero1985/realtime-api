@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Example applications restored** - Moved application-level code from git history into `examples/` directory:
+  - **Example scripts**: `cli_agent.py`, `voice_agent.py`, `realtime_websocket.py` now fully functional
+  - **Agent modules**: `examples/agents/` with team configuration, tools, and Hungarian prompts
+  - **Utility modules**: `examples/utils/` with audio I/O and time formatting utilities
+  - **CLI interface**: `examples/cli_app.py` for text-based agent interactions
+  - **Voice pipeline**: `examples/voice_pipeline.py` with `AgentFrameworkAPI` and `StreamingVoiceWorkflow`
+  - All examples use `sys.path.insert()` pattern for cross-example imports
+  - Comprehensive docstrings added to all example modules and scripts
+
 - **AudioFormat and VADConfig configuration classes** - Added shared configuration types to `_config.py`:
   - `AudioFormat`: Frozen dataclass for immutable audio format specifications (sample_rate, channels, dtype, encoding)
   - `VADConfig`: Voice Activity Detection configuration with support for server_vad, semantic_vad, and disabled modes
@@ -54,11 +63,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Cleaned up import paths and module organization for better maintainability
 - Standardized configuration pattern across all API modules
 
+### Fixed
+
+- **Example applications restored** - Fixed broken example scripts by restoring application-level code to `examples/` directory
+- Updated imports throughout examples to use new package structure (`openai_apis._logging` instead of `openai_apis.logging_config`)
+
 ### Notes
 
-- Example applications (`voice_agent.py`, `cli_agent.py`, `realtime_websocket.py`) temporarily non-functional pending refactoring
-- Tests for CLI and agent framework temporarily disabled (will be restored when modules are re-integrated)
-- This is a breaking change for existing code using the old module structure
+- This is a breaking change for existing code using the old module structure (pre-v1.0)
 
 ## [0.1.0] - Previous Release
 
