@@ -13,14 +13,14 @@ import wave
 import numpy as np
 from pathlib import Path
 from unittest.mock import Mock, AsyncMock, patch, MagicMock, mock_open
-from openai_apis.audio.transcription import (
+from openai_apis.transcription.session import (
     TranscriptionAPI,
-    TranscriptionConfig,
     transcribe_audio,
     transcribe_file,
     transcribe_audio_sync,
     transcribe_file_sync
 )
+from openai_apis.transcription.config import TranscriptionConfig
 
 
 # Fixtures
@@ -130,7 +130,7 @@ class TestTranscriptionAPI:
     def test_initialization_no_api_key(self):
         """Test initialization without API key raises error."""
         # Patch load_dotenv to prevent it from loading from .env file
-        with patch('openai_apis.audio.transcription.load_dotenv'), \
+        with patch('openai_apis.transcription.session.load_dotenv'), \
              patch.dict('os.environ', {}, clear=True):
             with pytest.raises(ValueError, match="OPENAI_API_KEY not set"):
                 TranscriptionAPI(config=TranscriptionConfig(api_key=None))
@@ -381,7 +381,7 @@ class TestConvenienceFunctions:
     @pytest.mark.asyncio
     async def test_transcribe_audio(self, sample_audio):
         """Test transcribe_audio convenience function."""
-        with patch('openai_apis.audio.transcription.TranscriptionAPI') as mock_api_class:
+        with patch('openai_apis.transcription.session.TranscriptionAPI') as mock_api_class:
             mock_api = Mock()
             mock_api.transcribe = AsyncMock(return_value="Convenience transcript")
             mock_api_class.return_value = mock_api
@@ -394,7 +394,7 @@ class TestConvenienceFunctions:
     @pytest.mark.asyncio
     async def test_transcribe_file_convenience(self, temp_wav_file):
         """Test transcribe_file convenience function."""
-        with patch('openai_apis.audio.transcription.TranscriptionAPI') as mock_api_class:
+        with patch('openai_apis.transcription.session.TranscriptionAPI') as mock_api_class:
             mock_api = Mock()
             mock_api.transcribe_file = AsyncMock(return_value="File transcript")
             mock_api_class.return_value = mock_api
