@@ -408,7 +408,7 @@ class TestConvenienceFunctions:
     @pytest.mark.asyncio
     async def test_synthesize_text(self):
         """Test synthesize_text convenience function."""
-        with patch('openai_apis.tts.openai_provider.TTSAPI') as mock_api_class:
+        with patch('openai_apis.tts.openai_provider.OpenAITTSProvider') as mock_api_class:
             mock_api = Mock()
             mock_audio = np.array([1, 2, 3], dtype=np.int16)
             mock_api.synthesize = AsyncMock(return_value=mock_audio)
@@ -422,7 +422,7 @@ class TestConvenienceFunctions:
     @pytest.mark.asyncio
     async def test_synthesize_to_file_convenience(self, temp_output_file):
         """Test synthesize_to_file convenience function."""
-        with patch('openai_apis.tts.openai_provider.TTSAPI') as mock_api_class:
+        with patch('openai_apis.tts.openai_provider.OpenAITTSProvider') as mock_api_class:
             mock_api = Mock()
             mock_api.synthesize_to_file = AsyncMock(return_value=temp_output_file)
             mock_api_class.return_value = mock_api
