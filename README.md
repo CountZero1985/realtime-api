@@ -4,15 +4,15 @@ A production-ready real-time voice agent system built with OpenAI's Realtime API
 
 ## Features
 
-- **Real-time Voice Conversations** - Low-latency (<1s) voice interactions
+- **Three Core API Modules**:
+  - **Transcription** - Speech-to-text with Whisper models
+  - **TTS** - Text-to-speech with multiple voice options
+  - **Realtime** - WebSocket-based realtime voice interactions
 - **Hungarian Language Support** - Optimized for Hungarian with extensibility to 90+ languages
-- **Multi-Agent System** - Coordinated agent team with automatic handoffs
-- **Web Search Integration** - Built-in web search capabilities
-- **Multiple Modes**:
-  - Voice Pipeline Mode (default) - Full voice conversation
-  - CLI Text Mode - Development and testing
-  - WebSocket Realtime Mode - Low-level control
-- **Tool Integration** - Extensible tool system for custom capabilities
+- **Clean, Stateless APIs** - Simple, predictable interfaces with no hidden state
+- **Provider-Based Architecture** - Extensible TTS system supporting multiple providers
+- **Comprehensive Logging** - Audit trail, performance tracking, correlation IDs
+- **Async & Sync Support** - All APIs support both async and sync usage patterns
 
 ## Quick Start
 
@@ -47,86 +47,94 @@ uv sync        # recommended
 
 ### Running the Application
 
-**Voice Mode:**
-```bash
-python examples/voice_agent.py
-```
-Press Enter to start/stop recording. Say "kilépés" or "exit" to quit.
+**Note:** The example applications (`voice_agent.py`, `cli_agent.py`, `realtime_websocket.py`) are currently being refactored to work with the new package structure. They will be updated in a future release.
 
-**CLI Text Mode:**
-```bash
-python examples/cli_agent.py
-```
-Type messages to interact. Type 'q' to quit, 'h' to see history.
+## API Usage
 
-**Realtime WebSocket Mode:**
-```bash
-python examples/realtime_websocket.py
-```
-
-## Usage Guide
-
-### Voice Mode Commands
-- `<Enter>` - Start/stop recording
-- `h` - View conversation history
-- `q` - Quit application
-- Voice: "kilépés", "exit" - Exit application
-
-### CLI Mode Commands
-- `<message>` - Send text message
-- `h` - View conversation history
-- `q` - Quit application
-
-## Development
-
-### Adding New Tools
-
-1. **Define the tool in `openai_apis/agents/tools.py`:**
-```python
-from agents import function_tool
-
-@function_tool
-def my_custom_tool(param: str) -> str:
-    """Tool description for the agent."""
-    return result
-```
-
-2. **Register with agent in `openai_apis/agents/team.py`:**
-```python
-agent = Agent(
-    name="agent_name",
-    tools=[existing_tool, my_custom_tool],
-    ...
-)
-```
-
-### Using the APIs
+### Transcription (Speech-to-Text)
 
 ```python
-# CLI Interface
-from openai_apis.cli import CLI
-from openai_apis.agents import assisstant_agent
+from openai_apis import TranscriptionAPI, TranscriptionConfig
 
-cli = CLI(agent=assisstant_agent)
-cli.run_sync()
-
-# Voice Pipeline
-from openai_apis.voice import AgentFrameworkAPI
-
-api = AgentFrameworkAPI(agent=assisstant_agent)
-await api.run_interactive()
-
-# Transcription
-from openai_apis.audio import TranscriptionAPI
-
+# Basic usage with defaults
 api = TranscriptionAPI()
-text = await api.transcribe_file("audio.wav")
+transcript = await api.transcribe_file("audio.wav")
+print(transcript)
 
-# Text-to-Speech
-from openai_apis.audio import TTSAPI
+# With custom configuration
+config = TranscriptionConfig(
+    model="gpt-4o-mini-transcribe",
+    language="hu",
+    temperature=0.0
+)
+api = TranscriptionAPI(config=config)
 
+# From numpy array
+import numpy as np
+audio_data = np.array([...])  # Shape: (N,) or (N, 1)
+transcript = await api.transcribe(audio_data)
+
+# Sync usage
+transcript = api.transcribe_file_sync("audio.wav")
+```
+
+### Text-to-Speech (TTS)
+
+```python
+from openai_apis import TTSAPI, TTSConfig
+
+# Basic usage
 api = TTSAPI()
-audio = await api.synthesize("Szia!")
+audio = await api.synthesize("Szia! Hogy vagy?")
+# Returns numpy array ready for playback
+
+# With custom voice and speed
+config = TTSConfig(
+    voice="sage",
+    speed=1.5,
+    model="gpt-4o-mini-tts"
+)
+api = TTSAPI(config=config)
+
+# Save to file
+await api.synthesize_to_file("Hello world!", "output.mp3")
+
+# Streaming synthesis
+async for chunk in api.synthesize_stream("Long text..."):
+    # Process audio chunks as they arrive
+    pass
+
+# Sync usage
+audio = api.synthesize_sync("Hello!")
+```
+
+### Realtime Voice API
+
+```python
+from openai_apis import RealtimeVoiceAPI, RealtimeConfig
+
+# Define callbacks
+def on_transcription(text):
+    print(f"User said: {text}")
+
+def on_response_text(text):
+    print(f"Agent: {text}")
+
+# Configure and run
+config = RealtimeConfig(
+    voice="sage",
+    language="hu",
+    instructions="segíts a felhasználónak"
+)
+
+api = RealtimeVoiceAPI(
+    config=config,
+    on_transcription=on_transcription,
+    on_response_text=on_response_text
+)
+
+# Run session (blocking)
+api.run_session_sync()
 ```
 
 ### Testing

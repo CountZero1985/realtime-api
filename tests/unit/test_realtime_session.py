@@ -13,12 +13,12 @@ import threading
 import queue
 import base64
 from unittest.mock import Mock, AsyncMock, patch, MagicMock, call
-from openai_apis.voice.realtime_session import (
+from openai_apis.realtime.session import (
     RealtimeVoiceAPI,
-    RealtimeConfig,
     RealtimeAgentState,
     start_realtime_session
 )
+from openai_apis.realtime.config import RealtimeConfig
 
 
 # Fixtures
@@ -529,7 +529,7 @@ class TestRealtimeVoiceAPI:
         """Test run_session."""
         mock_ws_app = Mock()
 
-        with patch('openai_apis.voice.realtime_session.websocket.WebSocketApp', return_value=mock_ws_app):
+        with patch('openai_apis.realtime.session.websocket.WebSocketApp', return_value=mock_ws_app):
             # Make run_forever return immediately
             mock_ws_app.run_forever.return_value = None
 
@@ -542,7 +542,7 @@ class TestRealtimeVoiceAPI:
         mock_ws_app = Mock()
         mock_ws_app.run_forever.side_effect = KeyboardInterrupt()
 
-        with patch('openai_apis.voice.realtime_session.websocket.WebSocketApp', return_value=mock_ws_app), \
+        with patch('openai_apis.realtime.session.websocket.WebSocketApp', return_value=mock_ws_app), \
              patch.object(api_instance, 'disconnect'):
 
             api_instance.run_session()
@@ -601,7 +601,7 @@ class TestSpeakerThread:
         api_instance._speaker_queue.put(chunk2)
         api_instance._speaker_queue.put(None)  # Signal end
 
-        with patch('openai_apis.voice.realtime_session.sd.OutputStream') as mock_stream_class:
+        with patch('openai_apis.realtime.session.sd.OutputStream') as mock_stream_class:
             mock_stream = Mock()
             mock_stream_class.return_value = mock_stream
 
@@ -618,7 +618,7 @@ class TestSpeakerThread:
         """Test speaker thread auto-stops when queue empty."""
         # Don't put anything in queue, should timeout and stop
 
-        with patch('openai_apis.voice.realtime_session.sd.OutputStream') as mock_stream_class:
+        with patch('openai_apis.realtime.session.sd.OutputStream') as mock_stream_class:
             mock_stream = Mock()
             mock_stream_class.return_value = mock_stream
 

@@ -15,7 +15,7 @@ Features:
 - Session configuration and lifecycle management
 
 Example usage:
-    from realtime_voice_api import RealtimeVoiceAPI, RealtimeConfig
+    from openai_apis.realtime import RealtimeVoiceAPI, RealtimeConfig
 
     def on_transcription(text):
         print(f"User said: {text}")
@@ -34,40 +34,10 @@ import time
 import base64
 import queue
 from typing import Optional, Callable, Dict, Any, List
-from dataclasses import dataclass, asdict
+from dataclasses import asdict
 from dotenv import load_dotenv
-from openai_apis.logging_config import get_logger, set_correlation_id, log_audit_event, log_performance
-
-
-@dataclass
-class RealtimeConfig:
-    """Configuration for Realtime API session."""
-
-    # Model settings
-    model: str = "gpt-4o-mini-realtime-preview-2024-12-17"
-
-    # Voice settings
-    voice: str = "sage"  # sage, ash, alloy, echo, shimmer
-    speed: float = 1.1  # 0.25 - 4.0
-
-    # Transcription settings
-    transcription_model: str = "gpt-4o-mini-transcribe"
-    language: str = "hu"  # Hungarian by default
-
-    # Audio settings
-    sample_rate: int = 24000
-    chunk_duration_s: float = 0.5
-    channels: int = 1
-
-    # Session settings
-    instructions: str = "segíts a kizárólag magyarul beszélő felhasználónak"
-    modalities: List[str] = None  # ["text", "audio"]
-    temperature: float = 0.8
-    max_response_output_tokens: str = "inf"
-
-    def __post_init__(self):
-        if self.modalities is None:
-            self.modalities = ["text", "audio"]
+from openai_apis._logging import get_logger, set_correlation_id, log_audit_event, log_performance
+from openai_apis.realtime.config import RealtimeConfig
 
 
 class RealtimeAgentState:

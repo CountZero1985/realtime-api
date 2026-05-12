@@ -16,7 +16,7 @@ Features:
 - Configurable log levels per module
 
 Example usage:
-    from logging_config import get_logger, log_audit_event
+    from openai_apis._logging import get_logger, log_audit_event
 
     logger = get_logger(__name__)
     logger.info("Operation started", extra={"user_id": "123"})

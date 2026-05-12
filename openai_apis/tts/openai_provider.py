@@ -14,10 +14,10 @@ Features:
 - Clean error handling
 
 Example usage:
-    from tts_api import TTSAPI, TTSConfig
+    from openai_apis.tts import OpenAITTSProvider, TTSConfig
 
     # Async usage
-    api = TTSAPI()
+    api = OpenAITTSProvider()
     audio = await api.synthesize("Szia! Hogy vagy?")
     # audio is numpy array ready for playback
 
@@ -35,36 +35,18 @@ import wave
 import time
 import numpy as np
 from typing import Optional, Union, AsyncIterator
-from dataclasses import dataclass, asdict
+from dataclasses import asdict
 from pathlib import Path
 from dotenv import load_dotenv
 from openai import AsyncOpenAI, OpenAI
-from openai_apis.logging_config import get_logger, set_correlation_id, log_audit_event, log_performance, log_api_call
+from openai_apis._logging import get_logger, set_correlation_id, log_audit_event, log_performance, log_api_call
+from openai_apis.tts.config import TTSConfig
+from openai_apis.tts.base import BaseTTSProvider
 
 
-@dataclass
-class TTSConfig:
-    """Configuration for TTS settings."""
-
-    # Model settings
-    model: str = "gpt-4o-mini-tts"  # or "tts-1", "tts-1-hd"
-
-    # Voice settings
-    voice: str = "ash"  # ash, sage, alloy, echo, shimmer
-    speed: float = 4.0  # 0.25 - 4.0
-
-    # Audio settings
-    output_format: str = "pcm"  # pcm, mp3, opus, aac, flac
-    sample_rate: int = 24000  # Only for PCM format
-
-    # OpenAI API settings
-    api_key: Optional[str] = None
-    timeout: float = 30.0  # seconds
-
-
-class TTSAPI:
+class OpenAITTSProvider(BaseTTSProvider):
     """
-    Stateless text-to-speech synthesis API.
+    Stateless text-to-speech synthesis API using OpenAI.
 
     This class provides simple, stateless synthesis of text to speech
     using OpenAI's TTS models. No conversation history is maintained.
@@ -102,7 +84,7 @@ class TTSAPI:
         # Logging
         self.logger = get_logger(__name__)
         self.logger.info(
-            "TTSAPI initialized",
+            "OpenAITTSProvider initialized",
             extra={"extra_data": {"config": asdict(self.config)}}
         )
 
@@ -504,11 +486,11 @@ async def synthesize_text(
         Audio data as numpy array (int16, mono, 24kHz).
 
     Example:
-        >>> from tts_api import synthesize_text
+        >>> from openai_apis.tts import synthesize_text
         >>> audio = await synthesize_text("Szia! Hogy vagy?")
     """
     config = TTSConfig(model=model, voice=voice, speed=speed, output_format="pcm")
-    api = TTSAPI(config=config)
+    api = OpenAITTSProvider(config=config)
     return await api.synthesize(text)
 
 
@@ -533,11 +515,11 @@ async def synthesize_to_file(
         Path to saved file.
 
     Example:
-        >>> from tts_api import synthesize_to_file
+        >>> from openai_apis.tts import synthesize_to_file
         >>> path = await synthesize_to_file("Hello!", "output.wav")
     """
     config = TTSConfig(model=model, voice=voice, speed=speed, output_format="pcm")
-    api = TTSAPI(config=config)
+    api = OpenAITTSProvider(config=config)
     return await api.synthesize_to_file(text, file_path)
 
 
@@ -565,12 +547,12 @@ def synthesize_to_file_sync(
 if __name__ == "__main__":
     print("TTS API module")
     print("\nExample (async):")
-    print("  from tts_api import TTSAPI")
-    print("  api = TTSAPI()")
+    print("  from openai_apis.tts import OpenAITTSProvider")
+    print("  api = OpenAITTSProvider()")
     print("  audio = await api.synthesize('Hello world!')")
     print("\nExample (sync):")
-    print("  from tts_api import synthesize_text_sync")
+    print("  from openai_apis.tts import synthesize_text_sync")
     print("  audio = synthesize_text_sync('Hello world!')")
     print("\nExample (file):")
-    print("  from tts_api import synthesize_to_file_sync")
+    print("  from openai_apis.tts import synthesize_to_file_sync")
     print("  path = synthesize_to_file_sync('Hello!', 'output.wav')")

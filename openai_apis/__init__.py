@@ -2,8 +2,8 @@
 
 __version__ = "0.1.0"
 
-# Core logging (used by all modules)
-from openai_apis.logging_config import (
+# Shared infrastructure
+from openai_apis._logging import (
     get_logger,
     set_correlation_id,
     log_audit_event,
@@ -11,57 +11,38 @@ from openai_apis.logging_config import (
     log_api_call,
     setup_logging,
 )
+from openai_apis._session import BaseSession
+from openai_apis._config import BaseConfig
 
-# CLI interface
-from openai_apis.cli.interface import CLI, CLIConfig
+# Transcription (M2)
+from openai_apis.transcription import TranscriptionAPI, TranscriptionConfig
 
-# Voice interfaces
-from openai_apis.voice.agent_framework import AgentFrameworkAPI, VoiceConfig
-from openai_apis.voice.realtime_session import RealtimeVoiceAPI, RealtimeConfig
-from openai_apis.voice.workflow import StreamingVoiceWorkflow
+# TTS (M1)
+from openai_apis.tts import TTSAPI, TTSConfig, OpenAITTSProvider, BaseTTSProvider
 
-# Audio processing
-from openai_apis.audio.transcription import TranscriptionAPI, TranscriptionConfig
-from openai_apis.audio.synthesis import TTSAPI, TTSConfig
-
-# Agent team
-from openai_apis.agents.team import assisstant_agent, tools_agent
-from openai_apis.agents.tools import websearch_tool, get_current_time, display_text_terminal
-
-# Utilities
-from openai_apis.utils.audio_io import record_audio, AudioPlayer
-from openai_apis.utils.time_format import magyar_ido_szoveggel
+# Realtime (M3)
+from openai_apis.realtime import RealtimeVoiceAPI, RealtimeConfig, RealtimeAgentState
 
 __all__ = [
-    # Logging
+    # Infrastructure
+    "BaseSession",
+    "BaseConfig",
     "get_logger",
     "set_correlation_id",
     "log_audit_event",
     "log_performance",
     "log_api_call",
     "setup_logging",
-    # CLI
-    "CLI",
-    "CLIConfig",
-    # Voice
-    "AgentFrameworkAPI",
-    "VoiceConfig",
-    "RealtimeVoiceAPI",
-    "RealtimeConfig",
-    "StreamingVoiceWorkflow",
-    # Audio
+    # Transcription
     "TranscriptionAPI",
     "TranscriptionConfig",
+    # TTS
     "TTSAPI",
     "TTSConfig",
-    # Agents
-    "assisstant_agent",
-    "tools_agent",
-    "websearch_tool",
-    "get_current_time",
-    "display_text_terminal",
-    # Utils
-    "record_audio",
-    "AudioPlayer",
-    "magyar_ido_szoveggel",
+    "OpenAITTSProvider",
+    "BaseTTSProvider",
+    # Realtime
+    "RealtimeVoiceAPI",
+    "RealtimeConfig",
+    "RealtimeAgentState",
 ]

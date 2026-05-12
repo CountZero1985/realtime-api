@@ -14,7 +14,7 @@ Features:
 - Clean error handling
 
 Example usage:
-    from transcription_api import TranscriptionAPI, TranscriptionConfig
+    from openai_apis.transcription import TranscriptionAPI, TranscriptionConfig
 
     # Async usage
     api = TranscriptionAPI()
@@ -37,35 +37,12 @@ import wave
 import time
 import numpy as np
 from typing import Optional, Union
-from dataclasses import dataclass, asdict
+from dataclasses import asdict
 from pathlib import Path
 from dotenv import load_dotenv
 from openai import AsyncOpenAI, OpenAI
-from openai_apis.logging_config import get_logger, set_correlation_id, log_audit_event, log_performance, log_api_call
-
-
-@dataclass
-class TranscriptionConfig:
-    """Configuration for transcription settings."""
-
-    # Model settings
-    model: str = "gpt-4o-mini-transcribe"  # or "whisper-1"
-    language: Optional[str] = "hu"  # ISO-639-1 code, None for auto-detect
-
-    # Audio settings (for validation)
-    expected_sample_rate: int = 24000
-    expected_channels: int = 1
-
-    # OpenAI API settings
-    api_key: Optional[str] = None
-    timeout: float = 30.0  # seconds
-
-    # Response settings
-    response_format: str = "text"  # text, json, verbose_json, srt, vtt
-
-    # Optional parameters
-    temperature: float = 0.0  # 0-1, lower = more deterministic
-    prompt: Optional[str] = None  # Context to guide transcription
+from openai_apis._logging import get_logger, set_correlation_id, log_audit_event, log_performance, log_api_call
+from openai_apis.transcription.config import TranscriptionConfig
 
 
 class TranscriptionAPI:
@@ -456,7 +433,7 @@ async def transcribe_audio(
 
     Example:
         >>> import numpy as np
-        >>> from transcription_api import transcribe_audio
+        >>> from openai_apis.transcription import transcribe_audio
         >>> audio = np.zeros(24000, dtype=np.int16)  # 1 second silence
         >>> text = await transcribe_audio(audio)
     """
@@ -482,7 +459,7 @@ async def transcribe_file(
         Transcribed text.
 
     Example:
-        >>> from transcription_api import transcribe_file
+        >>> from openai_apis.transcription import transcribe_file
         >>> text = await transcribe_file("recording.wav")
     """
     config = TranscriptionConfig(model=model, language=language)
@@ -511,12 +488,12 @@ def transcribe_file_sync(
 if __name__ == "__main__":
     print("Transcription API module")
     print("\nExample (async):")
-    print("  from transcription_api import TranscriptionAPI")
+    print("  from openai_apis.transcription import TranscriptionAPI")
     print("  api = TranscriptionAPI()")
     print("  text = await api.transcribe(audio_array)")
     print("\nExample (sync):")
-    print("  from transcription_api import transcribe_audio_sync")
+    print("  from openai_apis.transcription import transcribe_audio_sync")
     print("  text = transcribe_audio_sync(audio_array)")
     print("\nExample (file):")
-    print("  from transcription_api import transcribe_file_sync")
+    print("  from openai_apis.transcription import transcribe_file_sync")
     print("  text = transcribe_file_sync('recording.wav')")

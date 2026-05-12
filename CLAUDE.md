@@ -4,95 +4,130 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-A real-time voice agent system integrating OpenAI's Realtime API and OpenAI Agents SDK. The project is organized as an `openai_apis` Python package with modular APIs for voice, audio, CLI, and agent interactions. Supports Hungarian language.
+A real-time voice agent system integrating OpenAI's Realtime API and OpenAI Agents SDK. The project is organized as an `openai_apis` Python package with three core API modules (transcription, tts, realtime) plus shared infrastructure. Supports Hungarian language.
 
 ## Quick Commands
 
 ```bash
 uv sync                              # Install dependencies
-python examples/voice_agent.py       # Voice mode
-python examples/cli_agent.py         # CLI mode
 pytest tests/ -v                     # Run tests
 pytest tests/ --cov=openai_apis      # Tests with coverage
 ```
 
+## Package Structure
+
+The `openai_apis` package follows a clean, modular architecture:
+
+```
+openai_apis/
+├── _config.py          # Shared base configuration
+├── _logging.py         # Centralized logging infrastructure
+├── _session.py         # Base session abstract class
+├── transcription/      # Speech-to-text API (M2)
+│   ├── config.py
+│   └── session.py
+├── tts/                # Text-to-speech API (M1)
+│   ├── base.py
+│   ├── config.py
+│   ├── openai_provider.py
+│   └── _registry.py
+└── realtime/           # Realtime voice API (M3)
+    ├── config.py
+    ├── session.py
+    └── tools.py
+```
+
 ## Core Components
 
-**`openai_apis/cli/interface.py`** - Text-based CLI interface
-- `CLI`: Main class with conversation history, streaming
-- `CLIConfig`: Configuration dataclass
-- Supports both async and sync interfaces
-
-**`openai_apis/voice/agent_framework.py`** - Voice pipeline API
-- `AgentFrameworkAPI`: Wraps VoicePipeline with callbacks
-- `VoiceConfig`: Configuration for STT/TTS/agent settings
-- Interactive and single-shot modes
-
-**`openai_apis/voice/realtime_session.py`** - WebSocket realtime API
-- `RealtimeVoiceAPI`: Direct WebSocket to OpenAI Realtime API
-- `RealtimeConfig`: Session configuration
-- Push-to-talk with audio streaming
-
-**`openai_apis/audio/transcription.py`** - Speech-to-text
-- `TranscriptionAPI`: Stateless STT endpoint
+### Transcription API (`openai_apis/transcription/`)
+- **`TranscriptionAPI`**: Stateless speech-to-text using OpenAI Whisper
+- **`TranscriptionConfig`**: Configuration for transcription (model, language, sample rate)
 - Supports file and numpy array input
 - Uses gpt-4o-mini-transcribe or whisper-1
+- Async and sync interfaces
 
-**`openai_apis/audio/synthesis.py`** - Text-to-speech
-- `TTSAPI`: Stateless TTS endpoint
+### TTS API (`openai_apis/tts/`)
+- **`OpenAITTSProvider`**: OpenAI text-to-speech provider (also aliased as `TTSAPI`)
+- **`BaseTTSProvider`**: Abstract base class for TTS providers
+- **`TTSConfig`**: Configuration for TTS (model, voice, speed, format)
 - Multiple voice options (ash, sage, alloy, echo, shimmer)
 - Streaming and batch synthesis
+- Provider-based architecture for future extensibility
 
-**`openai_apis/agents/team.py`** - Agent configurations
-- `assisstant_agent`: Main agent with tools
-- `tools_agent`: Specialized for web search
-- Uses gpt-4o-mini model
+### Realtime Voice API (`openai_apis/realtime/`)
+- **`RealtimeVoiceAPI`**: Direct WebSocket connection to OpenAI Realtime API
+- **`RealtimeAgentState`**: State manager for realtime sessions
+- **`RealtimeConfig`**: Session configuration (model, voice, modalities)
+- Push-to-talk audio streaming
+- Real-time audio playback
+- Event-driven callbacks
 
-**`openai_apis/agents/tools.py`** - Tool definitions
-- `websearch_tool`: Web search
-- `get_current_time()`: Hungarian formatted time
-- `display_text_terminal()`: Terminal display
-
-**`openai_apis/logging_config.py`** - Centralized logging
-- `get_logger()`: Get module logger
-- `log_audit_event()`: Audit trail logging
-- `log_performance()`: Performance metrics
-- `set_correlation_id()`: Request tracing
+### Shared Infrastructure
+- **`_config.py`**: `BaseConfig` dataclass for all API sessions
+- **`_logging.py`**: Centralized logging with audit trail, performance tracking, correlation IDs
+- **`_session.py`**: `BaseSession` abstract base class (session lifecycle management)
 
 ## Development Notes
-
-### When Modifying Agents
-- Agent instructions are in `openai_apis/agents/prompts/`
-- Tools must be registered in both `tools.py` and assigned to agents in `team.py`
-- For TTS output, avoid direct URLs in speech - use descriptive source attribution
-
-### When Working with Audio
-- Always use numpy arrays with shape (N, 1) or (N,) for consistency
-- AudioPlayer flattens (N, 1) to (N,) automatically
-- Ensure cleanup in finally blocks when working with audio streams
 
 ### Import Patterns
 
 ```python
-# From package root
-from openai_apis import CLI, TTSAPI, TranscriptionAPI
+# From package root - recommended
+from openai_apis import TranscriptionAPI, TranscriptionConfig
+from openai_apis import TTSAPI, TTSConfig, OpenAITTSProvider
+from openai_apis import RealtimeVoiceAPI, RealtimeConfig, RealtimeAgentState
 
-# From submodules
-from openai_apis.cli import CLI, CLIConfig
-from openai_apis.voice import AgentFrameworkAPI, RealtimeVoiceAPI
-from openai_apis.audio import TranscriptionAPI, TTSAPI
-from openai_apis.agents import assisstant_agent, websearch_tool
-from openai_apis.utils import record_audio, AudioPlayer
+# From submodules - also valid
+from openai_apis.transcription import TranscriptionAPI, TranscriptionConfig
+from openai_apis.tts import TTSAPI, TTSConfig, OpenAITTSProvider, BaseTTSProvider
+from openai_apis.realtime import RealtimeVoiceAPI, RealtimeConfig, RealtimeAgentState
+
+# Logging infrastructure
+from openai_apis import get_logger, log_audit_event, log_performance, set_correlation_id
 ```
+
+### Configuration Pattern
+
+All API modules follow a consistent configuration pattern:
+
+```python
+from openai_apis import TranscriptionAPI, TranscriptionConfig
+
+# Use defaults
+api = TranscriptionAPI()
+
+# Or customize
+config = TranscriptionConfig(
+    model="gpt-4o-mini-transcribe",
+    language="hu",
+    api_key="sk-...",  # Optional, reads from OPENAI_API_KEY env var
+    timeout=60.0
+)
+api = TranscriptionAPI(config=config)
+```
+
+### When Working with Audio
+- All audio is represented as numpy arrays with shape `(N,)` or `(N, 1)`
+- Sample rate: 24000 Hz (default for all modules)
+- Channels: 1 (mono)
+- Ensure cleanup in finally blocks when working with audio streams
 
 ### Logging
 - Structured JSON logs to `logs/app.log` and `logs/error.log`
 - Audit trail to `logs/audit.log`
 - Correlation ID tracking for request tracing
+- Use `get_logger(__name__)` in modules for consistent logging
 - See `docs/LOGGING_AUDIT_TRAIL.md` for details
 
+### Adding New TTS Providers
+
+The TTS module uses a provider-based architecture:
+
+1. Create a new provider class inheriting from `BaseTTSProvider`
+2. Implement `synthesize()` and `synthesize_stream()` methods
+3. Register the provider in `tts/_registry.py`
+
 ### Known Issues
-- `OPENAI_API_KEY` loaded but not validated for None
-- MCP server integrations (gmail/file container) are commented out
-- Session memory management not implemented (conversation history truncation needed)
+- `OPENAI_API_KEY` loaded but not validated for None in some edge cases
+- Session memory management not implemented (conversation history truncation needed for realtime)
 - Response interruption not yet implemented in realtime mode
