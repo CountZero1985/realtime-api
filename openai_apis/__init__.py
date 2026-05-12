@@ -14,7 +14,7 @@ from openai_apis._logging import (
     AuditEvent,
 )
 from openai_apis._session import BaseSession, SessionState, InvalidStateTransition
-from openai_apis._config import BaseConfig
+from openai_apis._config import BaseConfig, AudioFormat, VADConfig
 
 # Transcription (M2)
 from openai_apis.transcription import TranscriptionAPI, TranscriptionConfig
@@ -31,6 +31,8 @@ __all__ = [
     "SessionState",
     "InvalidStateTransition",
     "BaseConfig",
+    "AudioFormat",
+    "VADConfig",
     "get_logger",
     "set_correlation_id",
     "log_audit_event",
