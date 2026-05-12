@@ -12,14 +12,17 @@ import tempfile
 import numpy as np
 from pathlib import Path
 from unittest.mock import Mock, AsyncMock, patch, MagicMock
-from openai_apis.audio.synthesis import (
-    TTSAPI,
-    TTSConfig,
+from openai_apis.tts.openai_provider import (
+    OpenAITTSProvider,
     synthesize_text,
     synthesize_to_file,
     synthesize_text_sync,
     synthesize_to_file_sync
 )
+from openai_apis.tts.config import TTSConfig
+
+# Backward compatibility alias
+TTSAPI = OpenAITTSProvider
 
 
 # Fixtures
@@ -105,7 +108,7 @@ class TestTTSAPI:
     def test_initialization_no_api_key(self):
         """Test initialization without API key raises error."""
         # Patch load_dotenv to prevent it from loading from .env file
-        with patch('openai_apis.audio.synthesis.load_dotenv'), \
+        with patch('openai_apis.tts.openai_provider.load_dotenv'), \
              patch.dict('os.environ', {}, clear=True):
             with pytest.raises(ValueError, match="OPENAI_API_KEY not set"):
                 TTSAPI(config=TTSConfig(api_key=None))
@@ -405,7 +408,7 @@ class TestConvenienceFunctions:
     @pytest.mark.asyncio
     async def test_synthesize_text(self):
         """Test synthesize_text convenience function."""
-        with patch('openai_apis.audio.synthesis.TTSAPI') as mock_api_class:
+        with patch('openai_apis.tts.openai_provider.TTSAPI') as mock_api_class:
             mock_api = Mock()
             mock_audio = np.array([1, 2, 3], dtype=np.int16)
             mock_api.synthesize = AsyncMock(return_value=mock_audio)
@@ -419,7 +422,7 @@ class TestConvenienceFunctions:
     @pytest.mark.asyncio
     async def test_synthesize_to_file_convenience(self, temp_output_file):
         """Test synthesize_to_file convenience function."""
-        with patch('openai_apis.audio.synthesis.TTSAPI') as mock_api_class:
+        with patch('openai_apis.tts.openai_provider.TTSAPI') as mock_api_class:
             mock_api = Mock()
             mock_api.synthesize_to_file = AsyncMock(return_value=temp_output_file)
             mock_api_class.return_value = mock_api
