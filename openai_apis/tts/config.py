@@ -68,12 +68,18 @@ class TTSConfig(BaseConfig):
                 f"Unknown provider '{self.provider}'. Provider must be registered in the registry."
             )
 
-        # Validate voice (must be in provider's supported_voices)
-        # Instantiate the provider class to access its supported_voices property
-        # Use a lightweight check via the class constant instead
+        # Validate voice against provider's supported voices
+        # Each provider module exposes a voice list constant
         if self.provider == "openai":
             from openai_apis.tts.openai_provider import OPENAI_TTS_VOICES
-            if self.voice not in OPENAI_TTS_VOICES:
-                raise ValueError(
-                    f"Invalid voice '{self.voice}'. Must be one of: {', '.join(OPENAI_TTS_VOICES)}"
-                )
+            valid_voices = OPENAI_TTS_VOICES
+        elif self.provider == "elevenlabs":
+            from openai_apis.tts.elevenlabs_provider import ELEVENLABS_TTS_VOICES
+            valid_voices = ELEVENLABS_TTS_VOICES
+        else:
+            valid_voices = None  # Skip voice validation for unknown-but-registered providers
+
+        if valid_voices is not None and self.voice not in valid_voices:
+            raise ValueError(
+                f"Invalid voice '{self.voice}'. Must be one of: {', '.join(valid_voices)}"
+            )
