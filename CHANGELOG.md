@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **TTSConfig validation** - Added `__post_init__` validation to `TTSConfig` (issue #13):
+  - **New fields**: Added `provider` (default: "openai") and `language` (default: "hu") fields
+  - **Speed validation**: Validates `speed` is between 0.25 and 4.0 on initialization
+  - **Voice validation**: Validates `voice` against provider's `supported_voices` list
+  - **Output format validation**: Validates `output_format` against supported formats ("pcm", "mp3", "opus", "aac", "flac", "wav")
+  - **Provider validation**: Validates `provider` is registered in the provider registry
+  - Raises `ValueError` with clear error messages for all invalid configurations
+  - New test file `tests/unit/test_tts_config.py` with comprehensive validation tests
+
+### Added
+
 - **OpenAI TTS Provider - Full Implementation** - Completed `OpenAITTSProvider` with all features from issue #12:
   - **13 voice support**: Added 8 new voices (ballad, coral, fable, nova, onyx, verse, marin, cedar) to existing 5 voices, total 13 voices now supported
   - **Instruction-based voice steering**: New `instructions` field in `TTSConfig` for voice customization with `gpt-4o-mini-tts` model
