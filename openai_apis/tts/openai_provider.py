@@ -100,6 +100,16 @@ class OpenAITTSProvider(BaseTTSProvider):
             details={"model": self.config.model, "voice": self.config.voice}
         )
 
+    @property
+    def supported_voices(self) -> list[str]:
+        """List of voices supported by OpenAI TTS."""
+        return ["ash", "sage", "alloy", "echo", "shimmer"]
+
+    @property
+    def provider_name(self) -> str:
+        """Provider identifier."""
+        return "openai"
+
     async def synthesize(
         self,
         text: str,
@@ -237,51 +247,6 @@ class OpenAITTSProvider(BaseTTSProvider):
 
         except Exception as e:
             raise Exception(f"TTS synthesis failed: {e}") from e
-
-    def synthesize_sync(
-        self,
-        text: str,
-        voice: Optional[str] = None,
-        speed: Optional[float] = None
-    ) -> "np.ndarray":
-        """
-        Synthesize text to speech as numpy array (sync).
-
-        Args:
-            text: Text to synthesize.
-            voice: Optional voice (overrides config).
-            speed: Optional speed (overrides config).
-
-        Returns:
-            Audio data as numpy array (int16, mono, 24kHz for PCM).
-        """
-        if np is None:
-            raise ImportError(
-                "numpy is required for this feature. "
-                "Install it with: pip install openai-apis[audio]"
-            )
-        return asyncio.run(self.synthesize(text, voice, speed))
-
-    def synthesize_to_file_sync(
-        self,
-        text: str,
-        file_path: Union[str, Path],
-        voice: Optional[str] = None,
-        speed: Optional[float] = None
-    ) -> Path:
-        """
-        Synthesize text to speech and save to file (sync).
-
-        Args:
-            text: Text to synthesize.
-            file_path: Output file path.
-            voice: Optional voice (overrides config).
-            speed: Optional speed (overrides config).
-
-        Returns:
-            Path to saved file.
-        """
-        return asyncio.run(self.synthesize_to_file(text, file_path, voice, speed))
 
     async def synthesize_batch(
         self,

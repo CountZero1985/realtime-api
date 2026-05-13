@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **BaseTTSProvider abstract base class enhancements** - Expanded `BaseTTSProvider` in `openai_apis/tts/base.py` with complete provider interface:
+  - Added `synthesize_to_file()` abstract method for saving audio directly to files
+  - Added `supported_voices` abstract property for listing available voices
+  - Added `provider_name` abstract property for provider identification (e.g., "openai", "elevenlabs")
+  - Added concrete sync wrapper methods `synthesize_sync()` and `synthesize_to_file_sync()` that delegate to async methods
+  - Subclasses now only need to implement async abstract methods; sync wrappers are inherited automatically
+  - `OpenAITTSProvider` now implements `supported_voices` (returns `["ash", "sage", "alloy", "echo", "shimmer"]`) and `provider_name` (returns `"openai"`)
+  - Removed redundant sync wrapper methods from `OpenAITTSProvider` to use inherited base class versions
+  - Comprehensive unit tests added in `tests/unit/test_tts_base.py` covering abstract contract, sync wrappers, and OpenAI provider properties
+
 ### Added
 
 - **Comprehensive API documentation** - Added complete API reference and architecture documentation:

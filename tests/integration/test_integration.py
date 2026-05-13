@@ -25,13 +25,7 @@ from openai_apis.tts import TTSAPI, TTSConfig
 
 
 # Fixtures
-
-@pytest.fixture
-def mock_agent():
-    """Create a mock Agent instance."""
-    agent = Mock(spec=Agent)
-    agent.name = "test_agent"
-    return agent
+# NOTE: mock_agent fixture is now provided by conftest.py
 
 
 @pytest.fixture
@@ -237,6 +231,7 @@ class TestRealtimeWithTranscriptionCallbacks:
 class TestMultipleAPIsWorkflow:
     """Test workflows using multiple APIs together."""
 
+    @pytest.mark.skip(reason="CLI module removed in issue #4")
     @pytest.mark.asyncio
     async def test_cli_to_tts_workflow(self, mock_agent):
         """Test CLI text response converted to speech."""
@@ -263,6 +258,7 @@ class TestMultipleAPIsWorkflow:
             assert text_response == "Text response from agent"
             assert isinstance(audio, np.ndarray)
 
+    @pytest.mark.skip(reason="CLI module removed in issue #4")
     @pytest.mark.asyncio
     async def test_transcription_cli_tts_full_flow(self, mock_agent, sample_audio):
         """Test complete flow: audio → text → agent → text → audio."""
@@ -302,6 +298,7 @@ class TestMultipleAPIsWorkflow:
 class TestConfigurationConsistency:
     """Test consistent configuration across APIs."""
 
+    @pytest.mark.skip(reason="VoiceConfig removed in issue #4")
     def test_hungarian_language_config(self):
         """Test Hungarian language configuration across APIs."""
         with patch.dict('os.environ', {'OPENAI_API_KEY': 'test-key'}):
@@ -314,6 +311,7 @@ class TestConfigurationConsistency:
             assert transcription_config.language == "hu"
             assert realtime_config.language == "hu"
 
+    @pytest.mark.skip(reason="VoiceConfig removed in issue #4")
     def test_audio_format_consistency(self):
         """Test 24kHz PCM16 format across APIs."""
         with patch.dict('os.environ', {'OPENAI_API_KEY': 'test-key'}):
@@ -328,6 +326,7 @@ class TestConfigurationConsistency:
             assert tts_config.sample_rate == 24000
             assert realtime_config.sample_rate == 24000
 
+    @pytest.mark.skip(reason="VoiceConfig removed in issue #4")
     def test_model_consistency(self):
         """Test model naming consistency across APIs."""
         with patch.dict('os.environ', {'OPENAI_API_KEY': 'test-key'}):
@@ -348,8 +347,8 @@ class TestErrorHandlingAcrossAPIs:
     async def test_api_key_error_handling(self):
         """Test all APIs handle missing API key consistently."""
         # Patch load_dotenv to prevent it from loading from .env file
-        with patch('openai_apis.audio.transcription.load_dotenv'), \
-             patch('openai_apis.audio.synthesis.load_dotenv'), \
+        with patch('openai_apis.transcription.session.load_dotenv'), \
+             patch('openai_apis.tts.openai_provider.load_dotenv'), \
              patch.dict('os.environ', {}, clear=True):
             # CLI doesn't require API key directly
             # TranscriptionAPI requires it
@@ -433,6 +432,7 @@ class TestPerformanceConsiderations:
 class TestStateManagement:
     """Test state management across APIs."""
 
+    @pytest.mark.skip(reason="CLI module removed in issue #4")
     @pytest.mark.asyncio
     async def test_cli_state_persistence(self, mock_agent):
         """Test CLI state persists across queries."""
@@ -471,6 +471,7 @@ class TestStateManagement:
 
             assert api.state.get("counter") == 3
 
+    @pytest.mark.skip(reason="AgentFramework module removed in issue #4")
     @pytest.mark.asyncio
     async def test_agent_framework_history_management(self, mock_agent, sample_audio):
         """Test agent framework maintains history correctly."""
@@ -512,6 +513,7 @@ class TestStateManagement:
 class TestEndToEndWorkflows:
     """Test complete end-to-end workflows."""
 
+    @pytest.mark.skip(reason="AgentFramework module removed in issue #4")
     @pytest.mark.asyncio
     async def test_voice_assistant_workflow(self, mock_agent, sample_audio):
         """Test complete voice assistant workflow."""
@@ -544,6 +546,7 @@ class TestEndToEndWorkflows:
 
                 assert transcript == "Szia! Hogy vagy?"
 
+    @pytest.mark.skip(reason="CLI module removed in issue #4")
     def test_text_based_assistant_workflow(self, mock_agent):
         """Test text-based assistant workflow."""
         # CLI for text interaction
