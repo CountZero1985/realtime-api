@@ -374,6 +374,14 @@ The TTS module uses a provider-based architecture:
 2. Implement `synthesize()` and `synthesize_stream()` methods
 3. Register the provider in `tts/_registry.py`
 
+## Documentation
+
+For detailed API reference and architecture information, see:
+
+- **`docs/API.md`** - Complete API reference for all modules (Transcription, TTS, Realtime), configuration classes (AudioFormat, VADConfig, BaseConfig), session infrastructure (BaseSession, SessionState), and logging/audit system. Includes method signatures, parameters, return types, and usage examples.
+- **`docs/ARCHITECTURE.md`** - System architecture documentation covering package structure, module relationships, data flow diagrams, session lifecycle state machine, and provider pattern.
+- **`docs/LOGGING_AUDIT_TRAIL.md`** - Comprehensive logging and audit trail reference.
+
 ### Known Issues
 - `OPENAI_API_KEY` loaded but not validated for None in some edge cases
 - Session memory management not implemented (conversation history truncation needed for realtime)

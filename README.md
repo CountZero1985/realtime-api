@@ -403,10 +403,12 @@ Update STT settings: `STTModelSettings(language="hu")` - change to correct langu
 
 ## Documentation
 
-- **README.md** - This file (user guide)
-- **specs.md** - Technical specifications and architecture
+- **README.md** - This file (user guide and quick start)
+- **docs/API.md** - Complete API reference for all modules
+- **docs/ARCHITECTURE.md** - System architecture and design patterns
+- **docs/LOGGING_AUDIT_TRAIL.md** - Logging and audit trail reference
+- **specs.md** - Technical specifications and implementation details
 - **CLAUDE.md** - AI assistant development guidance
-- **docs/LOGGING_AUDIT_TRAIL.md** - Logging reference
 - **docs/ai_docs/** - OpenAI API documentation
 
 ## External Resources
