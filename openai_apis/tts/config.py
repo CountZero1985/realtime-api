@@ -21,9 +21,10 @@ class TTSConfig(BaseConfig):
         instructions: Voice steering instructions (OpenAI gpt-4o-mini-tts specific).
         language: Language hint (ISO-639-1 code).
         sample_rate: Sample rate in Hz (only relevant for PCM format).
+        chunk_size: Streaming chunk size in bytes (must be > 0, default: 1024).
 
     Raises:
-        ValueError: If speed, voice, output_format, or provider is invalid.
+        ValueError: If speed, voice, output_format, chunk_size, or provider is invalid.
     """
 
     # Provider
@@ -40,6 +41,7 @@ class TTSConfig(BaseConfig):
     # Audio settings
     output_format: str = "pcm"  # pcm, mp3, opus, aac, flac, wav
     sample_rate: int = 24000  # Only for PCM format
+    chunk_size: int = 1024  # Streaming chunk size in bytes
 
     # Language
     language: str = "hu"  # ISO-639-1 language hint
@@ -58,6 +60,10 @@ class TTSConfig(BaseConfig):
             raise ValueError(
                 f"output_format must be one of {SUPPORTED_OUTPUT_FORMATS}, got '{self.output_format}'"
             )
+
+        # Validate chunk_size
+        if self.chunk_size <= 0:
+            raise ValueError(f"chunk_size must be positive, got {self.chunk_size}")
 
         # Validate provider (must be registered)
         from openai_apis.tts._registry import get_provider

@@ -33,7 +33,11 @@ class ElevenLabsTTSProvider(BaseTTSProvider):
         raise NotImplementedError("ElevenLabs provider not yet implemented")
 
     async def synthesize_stream(
-        self, text: str, voice: Optional[str] = None, speed: Optional[float] = None
+        self,
+        text: str,
+        voice: Optional[str] = None,
+        speed: Optional[float] = None,
+        chunk_size: Optional[int] = None,
     ) -> AsyncIterator[bytes]:
         raise NotImplementedError("ElevenLabs provider not yet implemented")
         yield  # pragma: no cover — makes it a generator

@@ -36,7 +36,11 @@ class BaseTTSProvider(ABC):
 
     @abstractmethod
     async def synthesize_stream(
-        self, text: str, voice: Optional[str] = None, speed: Optional[float] = None
+        self,
+        text: str,
+        voice: Optional[str] = None,
+        speed: Optional[float] = None,
+        chunk_size: Optional[int] = None,
     ) -> AsyncIterator[bytes]:
         """Synthesize text to speech with streaming.
 
@@ -44,6 +48,7 @@ class BaseTTSProvider(ABC):
             text: Text to synthesize.
             voice: Optional voice override (provider-specific).
             speed: Optional speed multiplier override.
+            chunk_size: Optional chunk size override (bytes). If None, uses config default.
 
         Yields:
             Audio chunks as bytes.

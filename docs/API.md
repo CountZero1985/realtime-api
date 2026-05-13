@@ -473,6 +473,7 @@ Configuration for TTS settings. Extends `BaseConfig`.
 | `output_format` | `str` | `"pcm"` | `"pcm"`, `"mp3"`, `"opus"`, `"aac"`, `"flac"`, `"wav"` | Output audio format (validated on init) |
 | `language` | `str` | `"hu"` | ISO-639-1 code | Language hint for synthesis |
 | `sample_rate` | `int` | `24000` | > 0 | Sample rate (PCM format only) |
+| `chunk_size` | `int` | `1024` | > 0 | Streaming chunk size in bytes (validated on init) |
 
 Plus all fields from `BaseConfig` (`api_key`, `timeout`, `audio_format`).
 
@@ -482,6 +483,7 @@ Plus all fields from `BaseConfig` (`api_key`, `timeout`, `audio_format`).
 
 - **`speed`**: Must be between 0.25 and 4.0 (inclusive). Raises `ValueError` if out of range.
 - **`output_format`**: Must be one of: `"pcm"`, `"mp3"`, `"opus"`, `"aac"`, `"flac"`, `"wav"`. Raises `ValueError` if invalid.
+- **`chunk_size`**: Must be positive (> 0). Raises `ValueError` if not positive.
 - **`provider`**: Must be registered in the provider registry. Raises `ValueError` if unknown. Currently supported: "openai", "elevenlabs".
 - **`voice`**: Must be in the provider's `supported_voices`. For OpenAI provider, must be one of 13 supported voices. For ElevenLabs, must be one of 3 voices (rachel, adam, bella). Raises `ValueError` if invalid.
 
@@ -687,7 +689,7 @@ Synthesize text to audio as numpy array (async).
   - `speed` (`Optional[float]`): Speed multiplier override
 - **Returns:** `np.ndarray` - Audio data as numpy array
 
-**`async synthesize_stream(text: str, voice: Optional[str] = None, speed: Optional[float] = None) -> AsyncIterator[bytes]`**
+**`async synthesize_stream(text: str, voice: Optional[str] = None, speed: Optional[float] = None, chunk_size: Optional[int] = None) -> AsyncIterator[bytes]`**
 
 Synthesize text to audio with streaming (async).
 
@@ -695,6 +697,7 @@ Synthesize text to audio with streaming (async).
   - `text` (`str`): Text to synthesize
   - `voice` (`Optional[str]`): Voice override (provider-specific)
   - `speed` (`Optional[float]`): Speed multiplier override
+  - `chunk_size` (`Optional[int]`): Chunk size override (bytes). If None, uses config default. API response bytes are buffered and yielded in uniform chunks of this size.
 - **Yields:** `bytes` - Audio chunks
 
 **`async synthesize_to_file(text: str, file_path: Union[str, Path], voice: Optional[str] = None, speed: Optional[float] = None) -> Path`**
@@ -837,7 +840,7 @@ Synthesize text and save to file.
 - **Returns:** `Path` - Path to the saved audio file
 - **Raises:** `ValueError` if text is empty, `TTSSynthesisError` on API errors
 
-**`synthesize_stream(text, voice=None, speed=None, instructions=None) -> AsyncIterator[bytes]`**
+**`synthesize_stream(text, voice=None, speed=None, instructions=None, chunk_size=None, backpressure_event=None) -> AsyncIterator[bytes]`**
 
 Synthesize text with streaming audio chunks. Includes comprehensive audit logging (start, complete, error events).
 
@@ -846,7 +849,9 @@ Synthesize text with streaming audio chunks. Includes comprehensive audit loggin
   - `voice` (`Optional[str]`): Voice override
   - `speed` (`Optional[float]`): Speed override
   - `instructions` (`Optional[str]`): Voice steering instructions (gpt-4o-mini-tts only)
-- **Yields:** `bytes` - Audio chunks
+  - `chunk_size` (`Optional[int]`): Chunk size override (bytes). If None, uses config default. API response bytes are buffered and yielded in uniform chunks of exactly this size (except potentially the final chunk).
+  - `backpressure_event` (`Optional[asyncio.Event]`): Optional asyncio.Event for backpressure control. When provided, the generator awaits this event before yielding each chunk. Consumer should set() the event to allow streaming, and clear() to pause. The event must be set initially, or the generator will block.
+- **Yields:** `bytes` - Audio chunks (uniform size, except potentially final chunk)
 - **Raises:** `ValueError` if text is empty, `TTSSynthesisError` on API errors
 
 **`synthesize_batch(texts, voice=None, speed=None) -> list[np.ndarray]`**
@@ -914,13 +919,44 @@ api.synthesize_to_file_sync("Hello world!", "output.mp3")
 **Streaming synthesis:**
 
 ```python
-from openai_apis import OpenAITTSProvider
+from openai_apis import OpenAITTSProvider, TTSConfig
 
 api = OpenAITTSProvider()
 
+# Basic streaming with default chunk size (1024 bytes)
 async for audio_chunk in api.synthesize_stream("Long text to synthesize..."):
     # Play or process each chunk as it arrives
     play_audio(audio_chunk)
+
+# Custom chunk size from config
+config = TTSConfig(chunk_size=2048)  # 2KB chunks
+api = OpenAITTSProvider(config=config)
+async for chunk in api.synthesize_stream("Text"):
+    # Chunks are exactly 2048 bytes (except final chunk)
+    process_chunk(chunk)
+
+# Override chunk size per call
+async for chunk in api.synthesize_stream("Text", chunk_size=512):
+    # 512-byte chunks for this specific call
+    process_chunk(chunk)
+
+# Backpressure control for flow management
+import asyncio
+backpressure = asyncio.Event()
+backpressure.set()  # Must be set initially to allow streaming
+
+async for chunk in api.synthesize_stream(
+    "Long text to synthesize...",
+    backpressure_event=backpressure
+):
+    # Process chunk
+    await play_audio_async(chunk)
+
+    # Pause streaming if buffer is full
+    if audio_buffer_full():
+        backpressure.clear()  # Pauses next chunk
+        await asyncio.sleep(0.1)
+        backpressure.set()  # Resumes streaming
 ```
 
 **Batch synthesis with custom voice:**

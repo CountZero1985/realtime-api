@@ -426,7 +426,9 @@ class TestPerformanceConsiderations:
             async for chunk in tts_api.synthesize_stream("Test"):
                 chunks.append(chunk)
 
-            assert len(chunks) == 2
+            # With default chunk_size=1024, small chunks are buffered together
+            assert len(chunks) == 1
+            assert chunks[0] == b"chunk1chunk2"
 
 
 class TestStateManagement:

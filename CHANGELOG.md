@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **TTS Streaming Enhancements** - Added configurable chunk size and backpressure support for `synthesize_stream()` (issue #15):
+  - **`chunk_size` field in `TTSConfig`**: New field (default: 1024 bytes) for configurable streaming chunk size with validation (must be > 0)
+  - **Re-chunking buffer**: API response bytes are buffered and yielded in uniform chunks of exactly `chunk_size` bytes (except potentially the final chunk)
+  - **`chunk_size` parameter**: Optional parameter on `synthesize_stream()` to override config default on a per-call basis
+  - **Backpressure control**: New `backpressure_event` parameter (optional `asyncio.Event`) allows consumers to pause/resume streaming by clearing/setting the event
+  - **Enhanced audit logging**: `chunk_size` and `chunk_count` now included in streaming audit events (`stream_synthesis_started`, `stream_synthesis_completed`)
+  - **Updated abstract interface**: `BaseTTSProvider.synthesize_stream()` signature now includes `chunk_size` parameter
+  - Comprehensive unit tests in `tests/unit/test_tts_openai_provider.py` covering chunk size validation, re-chunking, and backpressure handling
+
 - **TTS Provider Registry and ElevenLabs stub** - Refactored TTS provider system (issue #14):
   - **TTSRegistry class**: New class-based registry with `register()`, `get()`, `create()`, and `list_providers()` methods
   - **ElevenLabsTTSProvider stub**: Stub implementation for ElevenLabs provider with 3 voices (rachel, adam, bella)
