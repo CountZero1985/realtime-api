@@ -176,7 +176,8 @@ class OpenAITTSProvider(BaseTTSProvider):
         text: str,
         file_path: Union[str, Path],
         voice: Optional[str] = None,
-        speed: Optional[float] = None
+        speed: Optional[float] = None,
+        instructions: Optional[str] = None
     ) -> Path:
         """
         Synthesize text to speech and save to file (async).
@@ -186,13 +187,14 @@ class OpenAITTSProvider(BaseTTSProvider):
             file_path: Output file path (extension determines format).
             voice: Optional voice (overrides config).
             speed: Optional speed (overrides config).
+            instructions: Optional instruction-based voice steering (overrides config).
 
         Returns:
             Path to saved file.
 
         Raises:
             ValueError: If text is empty or parameters are invalid.
-            Exception: If synthesis fails.
+            TTSSynthesisError: If synthesis fails.
         """
         if not text or not text.strip():
             raise ValueError("Text cannot be empty")
@@ -351,7 +353,8 @@ class OpenAITTSProvider(BaseTTSProvider):
         self,
         text: str,
         voice: Optional[str] = None,
-        speed: Optional[float] = None
+        speed: Optional[float] = None,
+        instructions: Optional[str] = None
     ) -> bytes:
         """
         Internal method to synthesize text and return raw bytes.
@@ -360,6 +363,7 @@ class OpenAITTSProvider(BaseTTSProvider):
             text: Text to synthesize.
             voice: Optional voice (overrides config).
             speed: Optional speed (overrides config).
+            instructions: Optional instruction-based voice steering (overrides config).
 
         Returns:
             Raw audio bytes.
