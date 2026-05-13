@@ -17,8 +17,10 @@ Complete API reference for the `openai_apis` Python package, covering transcript
   - [TranscriptionAPI](#transcriptionapi)
 - [TTS API](#tts-api)
   - [TTSConfig](#ttsconfig)
+  - [TTSRegistry](#ttsregistry)
   - [BaseTTSProvider](#basettsproider)
   - [OpenAITTSProvider (TTSAPI)](#openaitts provider-ttsapi)
+  - [ElevenLabsTTSProvider](#elevenlabsttsprovider)
 - [Realtime Voice API](#realtime-voice-api)
   - [RealtimeConfig](#realtimeconfig)
   - [RealtimeAgentState](#realtimeagentstate)
@@ -480,8 +482,8 @@ Plus all fields from `BaseConfig` (`api_key`, `timeout`, `audio_format`).
 
 - **`speed`**: Must be between 0.25 and 4.0 (inclusive). Raises `ValueError` if out of range.
 - **`output_format`**: Must be one of: `"pcm"`, `"mp3"`, `"opus"`, `"aac"`, `"flac"`, `"wav"`. Raises `ValueError` if invalid.
-- **`provider`**: Must be registered in the provider registry. Raises `ValueError` if unknown.
-- **`voice`**: Must be in the provider's `supported_voices`. For OpenAI provider, must be one of 13 supported voices. Raises `ValueError` if invalid.
+- **`provider`**: Must be registered in the provider registry. Raises `ValueError` if unknown. Currently supported: "openai", "elevenlabs".
+- **`voice`**: Must be in the provider's `supported_voices`. For OpenAI provider, must be one of 13 supported voices. For ElevenLabs, must be one of 3 voices (rachel, adam, bella). Raises `ValueError` if invalid.
 
 ```python
 # Valid configuration
@@ -528,6 +530,139 @@ config = TTSConfig(
     voice="alloy",
     speed=1.0
 )
+```
+
+---
+
+### TTSRegistry
+
+Class-based registry for managing TTS providers using the factory pattern. Provides methods to register, retrieve, and instantiate TTS providers.
+
+**Type:** Class (singleton-like, all methods are class methods)
+
+#### Class Methods
+
+**`register(name: str, provider_class: Type[BaseTTSProvider]) -> None`**
+
+Register a TTS provider class.
+
+- **Parameters:**
+  - `name` (`str`): Provider name (e.g., "openai", "elevenlabs")
+  - `provider_class` (`Type[BaseTTSProvider]`): Provider class inheriting from `BaseTTSProvider`
+- **Returns:** `None`
+
+**`get(name: str) -> Type[BaseTTSProvider]`**
+
+Get a registered TTS provider class by name.
+
+- **Parameters:**
+  - `name` (`str`): Provider name
+- **Returns:** `Type[BaseTTSProvider]` - Provider class
+- **Raises:** `KeyError` if provider is not registered
+
+**`create(config: TTSConfig) -> BaseTTSProvider`**
+
+Create a TTS provider instance from configuration using the factory pattern.
+
+- **Parameters:**
+  - `config` (`TTSConfig`): Configuration with `provider` field set
+- **Returns:** `BaseTTSProvider` - Instantiated TTS provider
+- **Raises:** `KeyError` if `config.provider` is not registered
+
+**`list_providers() -> list[str]`**
+
+List all registered provider names.
+
+- **Returns:** `list[str]` - Sorted list of registered provider names
+
+#### Backward-Compatible Functions
+
+For backward compatibility, the module also exports free functions:
+
+- `register_provider(name, provider_class)` - Thin wrapper around `TTSRegistry.register()`
+- `get_provider(name)` - Thin wrapper around `TTSRegistry.get()`
+
+#### Built-in Providers
+
+The following providers are auto-registered on module import:
+- **"openai"** - `OpenAITTSProvider`
+- **"elevenlabs"** - `ElevenLabsTTSProvider` (stub)
+
+#### Usage Examples
+
+**Listing registered providers:**
+
+```python
+from openai_apis import TTSRegistry
+
+# Get all registered providers
+providers = TTSRegistry.list_providers()
+print(providers)  # ["elevenlabs", "openai"]
+```
+
+**Creating a provider from config:**
+
+```python
+from openai_apis import TTSRegistry, TTSConfig
+
+# Factory pattern - create provider from config
+config = TTSConfig(provider="openai", voice="sage")
+provider = TTSRegistry.create(config)
+
+# Provider is an instance of OpenAITTSProvider
+audio = await provider.synthesize("Hello world!")
+```
+
+**Registering a custom provider:**
+
+```python
+from openai_apis import TTSRegistry, BaseTTSProvider
+
+class MyCustomTTSProvider(BaseTTSProvider):
+    @property
+    def provider_name(self) -> str:
+        return "custom"
+
+    @property
+    def supported_voices(self) -> list[str]:
+        return ["voice1", "voice2"]
+
+    # Implement abstract methods...
+    async def synthesize(self, text, voice=None, speed=None):
+        # Implementation
+        pass
+
+# Register the custom provider
+TTSRegistry.register("custom", MyCustomTTSProvider)
+
+# Now it's available for use
+config = TTSConfig(provider="custom", voice="voice1")
+provider = TTSRegistry.create(config)
+```
+
+**Getting a provider class directly:**
+
+```python
+from openai_apis import TTSRegistry
+
+# Get the provider class (not an instance)
+provider_class = TTSRegistry.get("openai")
+print(provider_class)  # <class 'OpenAITTSProvider'>
+
+# Instantiate it manually
+provider = provider_class(config=my_config)
+```
+
+**Using backward-compatible functions:**
+
+```python
+from openai_apis.tts import register_provider, get_provider
+
+# Same as TTSRegistry.register()
+register_provider("my_provider", MyProviderClass)
+
+# Same as TTSRegistry.get()
+provider_class = get_provider("openai")
 ```
 
 ---
@@ -838,6 +973,92 @@ except TTSSynthesisError as e:
 ```
 
 The `TTSSynthesisError` exception is raised when the TTS API encounters errors during synthesis, including API failures, network issues, or processing errors. All OpenAI TTS methods (`synthesize`, `synthesize_stream`, `synthesize_to_file`) can raise this exception.
+
+---
+
+### ElevenLabsTTSProvider
+
+ElevenLabs text-to-speech provider stub. Implements `BaseTTSProvider` interface but all synthesis methods raise `NotImplementedError`. Serves as a placeholder for future ElevenLabs integration.
+
+**Status:** Stub implementation - not functional
+
+**Constructor:**
+
+```python
+ElevenLabsTTSProvider(config: Optional[TTSConfig] = None)
+```
+
+**Parameters:**
+- `config` (`Optional[TTSConfig]`): Configuration (stored but not used in stub)
+
+**Attributes:**
+- `config` (`Optional[TTSConfig]`): Stored configuration
+
+#### Properties
+
+**`supported_voices` (property) -> list[str]**
+
+List of voices supported by ElevenLabs TTS (stub).
+
+- **Returns:** `["rachel", "adam", "bella"]` (3 voices)
+
+**`provider_name` (property) -> str**
+
+Provider identifier.
+
+- **Returns:** `"elevenlabs"`
+
+#### Methods
+
+All synthesis methods raise `NotImplementedError`:
+
+**`async synthesize(text, voice=None, speed=None) -> np.ndarray`**
+
+- **Raises:** `NotImplementedError("ElevenLabs provider not yet implemented")`
+
+**`async synthesize_stream(text, voice=None, speed=None) -> AsyncIterator[bytes]`**
+
+- **Raises:** `NotImplementedError("ElevenLabs provider not yet implemented")`
+
+**`async synthesize_to_file(text, file_path, voice=None, speed=None) -> Path`**
+
+- **Raises:** `NotImplementedError("ElevenLabs provider not yet implemented")`
+
+**`synthesize_sync(text, voice=None, speed=None) -> np.ndarray`**
+
+Inherited sync wrapper from `BaseTTSProvider`.
+
+- **Raises:** `NotImplementedError("ElevenLabs provider not yet implemented")`
+
+**`synthesize_to_file_sync(text, file_path, voice=None, speed=None) -> Path`**
+
+Inherited sync wrapper from `BaseTTSProvider`.
+
+- **Raises:** `NotImplementedError("ElevenLabs provider not yet implemented")`
+
+#### Usage
+
+The ElevenLabs provider is registered and can be used in configuration, but all synthesis operations will fail:
+
+```python
+from openai_apis import TTSConfig, TTSRegistry
+
+# Valid configuration - provider and voices are validated
+config = TTSConfig(provider="elevenlabs", voice="rachel")
+
+# Create provider instance
+provider = TTSRegistry.create(config)
+print(provider.provider_name)  # "elevenlabs"
+print(provider.supported_voices)  # ["rachel", "adam", "bella"]
+
+# But synthesis will fail
+try:
+    audio = await provider.synthesize("Hello world!")
+except NotImplementedError as e:
+    print(f"Expected: {e}")  # "ElevenLabs provider not yet implemented"
+```
+
+**Why this exists:** The stub implementation allows the provider registry architecture to be tested and validated before integrating the actual ElevenLabs API. It also demonstrates the provider pattern for future TTS provider implementations.
 
 ---
 
@@ -1583,9 +1804,11 @@ from openai_apis.transcription import (
 
 ```python
 from openai_apis import (
-    TTSAPI,              # Alias for OpenAITTSProvider
+    TTSAPI,                 # Alias for OpenAITTSProvider
     TTSConfig,
+    TTSRegistry,            # Provider registry class
     OpenAITTSProvider,
+    ElevenLabsTTSProvider,  # Stub provider
     BaseTTSProvider,
 )
 
@@ -1593,15 +1816,17 @@ from openai_apis import (
 from openai_apis.tts import (
     TTSAPI,
     TTSConfig,
+    TTSRegistry,            # Provider registry class
     OpenAITTSProvider,
+    ElevenLabsTTSProvider,  # Stub provider
     BaseTTSProvider,
     TTSSynthesisError,       # exception for TTS errors
     synthesize_text,         # async convenience function
     synthesize_to_file,      # async convenience function
     synthesize_text_sync,    # sync convenience function
     synthesize_to_file_sync, # sync convenience function
-    register_provider,       # registry function
-    get_provider,            # registry function
+    register_provider,       # registry function (backward-compat)
+    get_provider,            # registry function (backward-compat)
 )
 ```
 
@@ -1647,7 +1872,7 @@ from openai_apis import (
     TranscriptionAPI, TranscriptionConfig,
 
     # TTS
-    TTSAPI, TTSConfig, OpenAITTSProvider, BaseTTSProvider, TTSSynthesisError,
+    TTSAPI, TTSConfig, TTSRegistry, OpenAITTSProvider, ElevenLabsTTSProvider, BaseTTSProvider, TTSSynthesisError,
 
     # Realtime
     RealtimeVoiceAPI, RealtimeConfig, RealtimeAgentState,

@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **TTS Provider Registry and ElevenLabs stub** - Refactored TTS provider system (issue #14):
+  - **TTSRegistry class**: New class-based registry with `register()`, `get()`, `create()`, and `list_providers()` methods
+  - **ElevenLabsTTSProvider stub**: Stub implementation for ElevenLabs provider with 3 voices (rachel, adam, bella)
+  - **Provider-agnostic voice validation**: `TTSConfig` now validates voices against any registered provider
+  - **Auto-registration**: Built-in providers (OpenAI, ElevenLabs) are auto-registered on module import
+  - **Backward-compatible free functions**: `register_provider()` and `get_provider()` functions maintained as thin wrappers
+  - Comprehensive unit tests in `tests/unit/test_tts_registry.py` covering all registry operations
+
 - **TTSConfig validation** - Added `__post_init__` validation to `TTSConfig` (issue #13):
   - **New fields**: Added `provider` (default: "openai") and `language` (default: "hu") fields
   - **Speed validation**: Validates `speed` is between 0.25 and 4.0 on initialization

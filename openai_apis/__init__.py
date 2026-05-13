@@ -42,8 +42,10 @@ from openai_apis.tts import (
     TTSAPI,
     TTSConfig,
     OpenAITTSProvider,
+    ElevenLabsTTSProvider,
     BaseTTSProvider,
     TTSSynthesisError,
+    TTSRegistry,
     register_provider,
     get_provider,
 )
@@ -79,8 +81,10 @@ __all__ = [
     "TTSAPI",
     "TTSConfig",
     "OpenAITTSProvider",
+    "ElevenLabsTTSProvider",
     "BaseTTSProvider",
     "TTSSynthesisError",
+    "TTSRegistry",
     "register_provider",
     "get_provider",
     # Realtime

@@ -66,15 +66,24 @@ examples/               # Standalone example applications
 - Async and sync interfaces
 
 ### TTS API (`openai_apis/tts/`)
+- **`TTSRegistry`**: Class-based provider registry with factory pattern
+  - `register(name, provider_class)`: Register a TTS provider
+  - `get(name)`: Get a registered provider class
+  - `create(config)`: Factory method to instantiate provider from config
+  - `list_providers()`: List all registered provider names
+  - Built-in providers: "openai" (OpenAITTSProvider), "elevenlabs" (ElevenLabsTTSProvider stub)
 - **`OpenAITTSProvider`**: OpenAI text-to-speech provider (also aliased as `TTSAPI`)
+  - 13 voices: alloy, ash, ballad, coral, echo, fable, nova, onyx, sage, shimmer, verse, marin, cedar
+  - Full implementation with streaming and batch synthesis
+- **`ElevenLabsTTSProvider`**: ElevenLabs TTS provider (stub implementation)
+  - 3 voices: rachel, adam, bella
+  - All methods raise `NotImplementedError` (placeholder for future integration)
 - **`BaseTTSProvider`**: Abstract base class for TTS providers
 - **`TTSConfig`**: Configuration for TTS with `__post_init__` validation
   - Fields: `provider`, `model`, `voice`, `speed`, `instructions`, `output_format`, `language`, `sample_rate`
   - Validates `speed` (0.25-4.0), `voice` (against provider's supported voices), `output_format` (pcm/mp3/opus/aac/flac/wav), `provider` (must be registered)
   - Raises `ValueError` for invalid configurations
-- 13 voice options: alloy, ash, ballad, coral, echo, fable, nova, onyx, sage, shimmer, verse, marin, cedar
-- Streaming and batch synthesis
-- Provider-based architecture for future extensibility
+- Provider-based architecture with class-based registry for extensibility
 
 ### Realtime Voice API (`openai_apis/realtime/`)
 - **`RealtimeVoiceAPI`**: Direct WebSocket connection to OpenAI Realtime API
@@ -200,12 +209,16 @@ python examples/realtime_websocket.py
 ```python
 # From package root - recommended
 from openai_apis import TranscriptionAPI, TranscriptionConfig
-from openai_apis import TTSAPI, TTSConfig, OpenAITTSProvider
+from openai_apis import TTSAPI, TTSConfig, TTSRegistry, OpenAITTSProvider, ElevenLabsTTSProvider
 from openai_apis import RealtimeVoiceAPI, RealtimeConfig, RealtimeAgentState
 
 # From submodules - also valid
 from openai_apis.transcription import TranscriptionAPI, TranscriptionConfig
-from openai_apis.tts import TTSAPI, TTSConfig, OpenAITTSProvider, BaseTTSProvider
+from openai_apis.tts import (
+    TTSAPI, TTSConfig, TTSRegistry,
+    OpenAITTSProvider, ElevenLabsTTSProvider, BaseTTSProvider,
+    register_provider, get_provider
+)
 from openai_apis.realtime import RealtimeVoiceAPI, RealtimeConfig, RealtimeAgentState
 
 # Session infrastructure
@@ -371,11 +384,40 @@ async with MyCustomSession() as session:
 
 ### Adding New TTS Providers
 
-The TTS module uses a provider-based architecture:
+The TTS module uses a provider-based architecture with class-based registry:
 
-1. Create a new provider class inheriting from `BaseTTSProvider`
-2. Implement `synthesize()` and `synthesize_stream()` methods
-3. Register the provider in `tts/_registry.py`
+1. **Create a new provider class** inheriting from `BaseTTSProvider`
+   - Implement abstract methods: `synthesize()`, `synthesize_stream()`, `synthesize_to_file()`
+   - Implement abstract properties: `provider_name`, `supported_voices`
+2. **Register the provider** using `TTSRegistry.register(name, provider_class)`
+   - For built-in providers: Add to `_register_builtins()` in `tts/_registry.py`
+   - For external providers: Use `TTSRegistry.register()` or `register_provider()` function
+3. **Use the provider** via factory pattern: `TTSRegistry.create(config)`
+
+**Example:**
+```python
+from openai_apis.tts import BaseTTSProvider, TTSRegistry
+
+class MyTTSProvider(BaseTTSProvider):
+    @property
+    def provider_name(self) -> str:
+        return "my_provider"
+
+    @property
+    def supported_voices(self) -> list[str]:
+        return ["voice1", "voice2"]
+
+    async def synthesize(self, text, voice=None, speed=None):
+        # Implementation
+        pass
+
+# Register
+TTSRegistry.register("my_provider", MyTTSProvider)
+
+# Use
+config = TTSConfig(provider="my_provider", voice="voice1")
+provider = TTSRegistry.create(config)
+```
 
 ## Documentation
 

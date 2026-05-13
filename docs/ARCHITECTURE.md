@@ -72,7 +72,8 @@ openai_apis/
 │   ├── config.py           # TTSConfig (extends BaseConfig)
 │   ├── base.py             # BaseTTSProvider (abstract base class)
 │   ├── openai_provider.py  # OpenAITTSProvider (OpenAI TTS implementation)
-│   └── _registry.py        # Provider registry for extensibility
+│   ├── elevenlabs_provider.py # ElevenLabsTTSProvider (stub implementation)
+│   └── _registry.py        # TTSRegistry class and provider registry
 │
 └── realtime/               # Realtime voice API (M3)
     ├── __init__.py         # Public exports
@@ -530,7 +531,7 @@ async with MySession() as session:
 
 ## Provider Pattern
 
-The TTS module uses a provider-based architecture to support multiple TTS backends.
+The TTS module uses a provider-based architecture with a class-based registry to support multiple TTS backends.
 
 ### Architecture
 
@@ -540,15 +541,22 @@ The TTS module uses a provider-based architecture to support multiple TTS backen
 │ - synthesize()   │   (defines provider interface)
 │ - synthesize_    │
 │   stream()       │
+│ - synthesize_    │
+│   to_file()      │
+│ - supported_     │
+│   voices         │
+│ - provider_name  │
 └────────┬─────────┘
          │ extends
          │
-    ┌────┴────────────────────┐
-    │                         │
-┌───▼──────────────┐   ┌──────▼──────────┐
-│ OpenAITTSProvider│   │ CustomProvider  │
-│ (built-in)       │   │ (user-defined)  │
-└──────────────────┘   └─────────────────┘
+    ┌────┴──────────────────────────────┐
+    │                                   │
+┌───▼──────────────────┐   ┌────────▼──────────────┐
+│ OpenAITTSProvider    │   │ ElevenLabsTTSProvider │
+│ (built-in, active)   │   │ (built-in, stub)      │
+│ - 13 voices          │   │ - 3 voices            │
+│ - gpt-4o-mini-tts    │   │ - NotImplementedError │
+└──────────────────────┘   └───────────────────────┘
          │
          │ aliased as
          ▼
@@ -556,13 +564,25 @@ The TTS module uses a provider-based architecture to support multiple TTS backen
     │ TTSAPI │ (convenient alias)
     └────────┘
 
-┌──────────────────┐
-│ Provider Registry│ ← Global registry
-│ - register_      │   (manages providers)
-│   provider()     │
-│ - get_provider() │
-└──────────────────┘
+┌──────────────────────────────────────────┐
+│ TTSRegistry (class-based registry)       │
+│ - register(name, provider_class)         │
+│ - get(name) → provider_class             │
+│ - create(config) → provider_instance     │
+│ - list_providers() → ["openai", ...]     │
+└──────────────────────────────────────────┘
+         │
+         │ backward-compatible wrappers
+         ▼
+┌──────────────────────────────────────────┐
+│ register_provider(), get_provider()      │
+│ (free functions, delegate to class)      │
+└──────────────────────────────────────────┘
 ```
+
+**Built-in Providers:**
+- **OpenAI** (`openai`) - Fully functional with 13 voices, instruction-based voice steering
+- **ElevenLabs** (`elevenlabs`) - Stub implementation with 3 voices, raises `NotImplementedError`
 
 ### Adding a Custom Provider
 
@@ -570,42 +590,75 @@ The TTS module uses a provider-based architecture to support multiple TTS backen
 
 ```python
 from openai_apis.tts import BaseTTSProvider
-from typing import AsyncIterator
+from typing import AsyncIterator, Optional, Union
+from pathlib import Path
 import numpy as np
 
 class MyCustomTTSProvider(BaseTTSProvider):
     def __init__(self, config=None):
-        self.config = config or MyTTSConfig()
+        self.config = config
 
-    async def synthesize(self, text, voice=None, speed=None):
+    @property
+    def provider_name(self) -> str:
+        return "my_custom_provider"
+
+    @property
+    def supported_voices(self) -> list[str]:
+        return ["voice_a", "voice_b", "voice_c"]
+
+    async def synthesize(self, text: str, voice: Optional[str] = None,
+                        speed: Optional[float] = None) -> np.ndarray:
         # Implementation here
-        audio_data = await my_tts_engine.synthesize(text)
+        audio_data = await my_tts_engine.synthesize(text, voice, speed)
         return np.array(audio_data, dtype=np.int16)
 
-    async def synthesize_stream(self, text, voice=None, speed=None):
+    async def synthesize_stream(self, text: str, voice: Optional[str] = None,
+                               speed: Optional[float] = None) -> AsyncIterator[bytes]:
         # Streaming implementation
-        async for chunk in my_tts_engine.stream(text):
-            yield np.array(chunk, dtype=np.int16)
+        async for chunk in my_tts_engine.stream(text, voice, speed):
+            yield chunk
+
+    async def synthesize_to_file(self, text: str, file_path: Union[str, Path],
+                                voice: Optional[str] = None,
+                                speed: Optional[float] = None) -> Path:
+        # File synthesis implementation
+        audio = await self.synthesize(text, voice, speed)
+        # Save to file...
+        return Path(file_path)
 ```
 
 **Step 2: Register the provider**
 
 ```python
-from openai_apis.tts import register_provider
+from openai_apis import TTSRegistry
 
+# Class method (recommended)
+TTSRegistry.register("my_custom_tts", MyCustomTTSProvider)
+
+# Or use backward-compatible function
+from openai_apis.tts import register_provider
 register_provider("my_custom_tts", MyCustomTTSProvider)
 ```
 
 **Step 3: Use the provider**
 
 ```python
+from openai_apis import TTSRegistry, TTSConfig
+
+# Option A: Factory pattern (recommended)
+config = TTSConfig(provider="my_custom_tts", voice="voice_a")
+provider = TTSRegistry.create(config)
+audio = await provider.synthesize("Hello world")
+
+# Option B: Get class and instantiate manually
+provider_class = TTSRegistry.get("my_custom_tts")
+provider = provider_class(config=config)
+audio = await provider.synthesize("Hello world")
+
+# Option C: Backward-compatible function
 from openai_apis.tts import get_provider
-
-# Get provider class
 ProviderClass = get_provider("my_custom_tts")
-
-# Instantiate and use
-provider = ProviderClass(config=my_config)
+provider = ProviderClass(config=config)
 audio = await provider.synthesize("Hello world")
 ```
 

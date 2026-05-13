@@ -173,15 +173,31 @@ async for chunk in api.synthesize_stream("Long text..."):
 audio = api.synthesize_sync("Hello!")
 ```
 
-**Available voices (13):** alloy, ash, ballad, coral, echo, fable, nova, onyx, sage, shimmer, verse, marin, cedar
+**Available voices:**
+- **OpenAI (13 voices):** alloy, ash, ballad, coral, echo, fable, nova, onyx, sage, shimmer, verse, marin, cedar
+- **ElevenLabs (3 voices - stub):** rachel, adam, bella
+
+**Provider Registry:** The TTS system uses a provider registry pattern:
+```python
+from openai_apis import TTSRegistry
+
+# List registered providers
+providers = TTSRegistry.list_providers()  # ["elevenlabs", "openai"]
+
+# Create provider from config
+config = TTSConfig(provider="elevenlabs", voice="rachel")
+provider = TTSRegistry.create(config)
+```
 
 **Configuration validation:** `TTSConfig` validates all parameters on initialization:
 - `speed` must be between 0.25 and 4.0
 - `voice` must be in the provider's supported voices list
 - `output_format` must be one of: pcm, mp3, opus, aac, flac, wav
-- `provider` must be registered (currently "openai")
+- `provider` must be registered (currently "openai" and "elevenlabs")
 
 Invalid values raise `ValueError` with clear error messages.
+
+**Note:** ElevenLabs provider is a stub implementation. All methods raise `NotImplementedError`.
 
 ### Realtime Voice API
 
