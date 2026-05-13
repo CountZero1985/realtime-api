@@ -244,7 +244,7 @@ class TestSynthesizeStream:
 
     @pytest.mark.asyncio
     async def test_stream_yields_chunks(self, tts_provider):
-        """Yields bytes chunks."""
+        """Yields bytes chunks (buffered into uniform-sized chunks by default)."""
         async def mock_iter_bytes():
             yield b"chunk1"
             yield b"chunk2"
@@ -260,7 +260,8 @@ class TestSynthesizeStream:
         async for chunk in tts_provider.synthesize_stream("Test"):
             chunks.append(chunk)
 
-        assert chunks == [b"chunk1", b"chunk2"]
+        # With default chunk_size=1024, small chunks are buffered together
+        assert chunks == [b"chunk1chunk2"]
 
     @pytest.mark.asyncio
     async def test_stream_empty_text_raises(self, tts_provider):
@@ -332,6 +333,159 @@ class TestSynthesizeStream:
 
         call_kwargs = gpt4o_mini_tts_provider.client.audio.speech.with_streaming_response.create.call_args[1]
         assert call_kwargs["instructions"] == "Be calm"
+
+    @pytest.mark.asyncio
+    async def test_stream_configurable_chunk_size(self, mock_env_key):
+        """Configurable chunk_size parameter re-chunks API response."""
+        config = TTSConfig(chunk_size=4)
+        provider = OpenAITTSProvider(config=config)
+
+        async def mock_iter_bytes():
+            yield b"abcdef"
+            yield b"gh"
+
+        mock_response = MagicMock()
+        mock_response.iter_bytes = mock_iter_bytes
+        mock_response.__aenter__ = AsyncMock(return_value=mock_response)
+        mock_response.__aexit__ = AsyncMock(return_value=None)
+
+        provider.client.audio.speech.with_streaming_response.create = Mock(return_value=mock_response)
+
+        chunks = []
+        async for chunk in provider.synthesize_stream("Test"):
+            chunks.append(chunk)
+
+        # API yields "abcdef" + "gh" = 8 bytes total
+        # Re-chunked to 4-byte chunks: ["abcd", "efgh"]
+        assert chunks == [b"abcd", b"efgh"]
+
+    @pytest.mark.asyncio
+    async def test_stream_chunk_size_override_param(self, tts_provider):
+        """chunk_size parameter overrides config default."""
+        async def mock_iter_bytes():
+            yield b"abcdefg"
+
+        mock_response = MagicMock()
+        mock_response.iter_bytes = mock_iter_bytes
+        mock_response.__aenter__ = AsyncMock(return_value=mock_response)
+        mock_response.__aexit__ = AsyncMock(return_value=None)
+
+        tts_provider.client.audio.speech.with_streaming_response.create = Mock(return_value=mock_response)
+
+        chunks = []
+        async for chunk in tts_provider.synthesize_stream("Test", chunk_size=3):
+            chunks.append(chunk)
+
+        # 7 bytes with chunk_size=3: ["abc", "def", "g"]
+        assert chunks == [b"abc", b"def", b"g"]
+
+    @pytest.mark.asyncio
+    async def test_stream_chunk_size_final_partial_chunk(self, mock_env_key):
+        """Final chunk can be smaller than chunk_size."""
+        config = TTSConfig(chunk_size=4)
+        provider = OpenAITTSProvider(config=config)
+
+        async def mock_iter_bytes():
+            yield b"abcde"
+
+        mock_response = MagicMock()
+        mock_response.iter_bytes = mock_iter_bytes
+        mock_response.__aenter__ = AsyncMock(return_value=mock_response)
+        mock_response.__aexit__ = AsyncMock(return_value=None)
+
+        provider.client.audio.speech.with_streaming_response.create = Mock(return_value=mock_response)
+
+        chunks = []
+        async for chunk in provider.synthesize_stream("Test"):
+            chunks.append(chunk)
+
+        # 5 bytes with chunk_size=4: ["abcd", "e"]
+        assert chunks == [b"abcd", b"e"]
+
+    @pytest.mark.asyncio
+    async def test_stream_backpressure_event(self, mock_env_key):
+        """Backpressure event controls streaming flow."""
+        config = TTSConfig(chunk_size=4)
+        provider = OpenAITTSProvider(config=config)
+
+        async def mock_iter_bytes():
+            yield b"abcd"
+            yield b"efgh"
+
+        mock_response = MagicMock()
+        mock_response.iter_bytes = mock_iter_bytes
+        mock_response.__aenter__ = AsyncMock(return_value=mock_response)
+        mock_response.__aexit__ = AsyncMock(return_value=None)
+
+        provider.client.audio.speech.with_streaming_response.create = Mock(return_value=mock_response)
+
+        backpressure_event = asyncio.Event()
+        backpressure_event.set()  # Allow streaming initially
+
+        chunks = []
+        async for chunk in provider.synthesize_stream("Test", backpressure_event=backpressure_event):
+            chunks.append(chunk)
+            # Event is set, so streaming continues
+
+        # Should yield both chunks normally
+        assert chunks == [b"abcd", b"efgh"]
+
+    @pytest.mark.asyncio
+    async def test_stream_backpressure_blocks_when_cleared(self, mock_env_key):
+        """Generator blocks when backpressure event is cleared."""
+        config = TTSConfig(chunk_size=4)
+        provider = OpenAITTSProvider(config=config)
+
+        async def mock_iter_bytes():
+            yield b"abcd"
+            yield b"efgh"
+
+        mock_response = MagicMock()
+        mock_response.iter_bytes = mock_iter_bytes
+        mock_response.__aenter__ = AsyncMock(return_value=mock_response)
+        mock_response.__aexit__ = AsyncMock(return_value=None)
+
+        provider.client.audio.speech.with_streaming_response.create = Mock(return_value=mock_response)
+
+        backpressure_event = asyncio.Event()
+        # Do NOT set the event initially - generator should block
+
+        stream = provider.synthesize_stream("Test", backpressure_event=backpressure_event)
+
+        # Try to get first chunk with timeout - should timeout because event is not set
+        with pytest.raises(asyncio.TimeoutError):
+            await asyncio.wait_for(stream.__anext__(), timeout=0.1)
+
+    @pytest.mark.asyncio
+    async def test_stream_chunk_size_in_audit_log(self, tts_provider):
+        """chunk_size appears in audit event details."""
+        async def mock_iter_bytes():
+            yield b"test"
+
+        mock_response = MagicMock()
+        mock_response.iter_bytes = mock_iter_bytes
+        mock_response.__aenter__ = AsyncMock(return_value=mock_response)
+        mock_response.__aexit__ = AsyncMock(return_value=None)
+
+        tts_provider.client.audio.speech.with_streaming_response.create = Mock(return_value=mock_response)
+
+        with patch('openai_apis.tts.openai_provider.log_audit_event') as mock_audit:
+            chunks = []
+            async for chunk in tts_provider.synthesize_stream("Test", chunk_size=2048):
+                chunks.append(chunk)
+
+            # Check stream_synthesis_started event
+            start_calls = [call for call in mock_audit.call_args_list if call[1].get('action') == 'stream_synthesis_started']
+            assert len(start_calls) > 0
+            start_details = start_calls[0][1]['details']
+            assert start_details['chunk_size'] == 2048
+
+            # Check stream_synthesis_completed event
+            complete_calls = [call for call in mock_audit.call_args_list if call[1].get('action') == 'stream_synthesis_completed']
+            assert len(complete_calls) > 0
+            complete_details = complete_calls[0][1]['details']
+            assert 'chunk_size' in complete_details
+            assert 'chunk_count' in complete_details
 
 
 class TestSynthesizeToFile:
@@ -481,6 +635,26 @@ class TestTTSConfig:
         """TTSConfig accepts custom instructions string."""
         config = TTSConfig(instructions="Speak slowly and clearly")
         assert config.instructions == "Speak slowly and clearly"
+
+    def test_chunk_size_validation_zero_raises(self):
+        """chunk_size=0 raises ValueError."""
+        with pytest.raises(ValueError, match="chunk_size must be positive"):
+            TTSConfig(chunk_size=0)
+
+    def test_chunk_size_validation_negative_raises(self):
+        """chunk_size<0 raises ValueError."""
+        with pytest.raises(ValueError, match="chunk_size must be positive"):
+            TTSConfig(chunk_size=-1)
+
+    def test_chunk_size_validation_positive_succeeds(self):
+        """chunk_size>0 succeeds."""
+        config = TTSConfig(chunk_size=2048)
+        assert config.chunk_size == 2048
+
+    def test_chunk_size_default_value(self):
+        """chunk_size defaults to 1024."""
+        config = TTSConfig()
+        assert config.chunk_size == 1024
 
 
 if __name__ == "__main__":
