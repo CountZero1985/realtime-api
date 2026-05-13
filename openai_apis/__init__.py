@@ -1,4 +1,22 @@
-"""OpenAI APIs - Unified interface for OpenAI voice/text services."""
+"""
+OpenAI APIs - Unified interface for OpenAI voice/text services.
+
+This package supports modular installation via optional extras:
+
+- Core dependencies: openai, websockets, python-dotenv
+- Optional extras:
+  - [audio]: Adds sounddevice, numpy, websocket-client for transcription/TTS/realtime
+  - [web]: Adds fastapi, uvicorn, python-multipart, aiofiles for web features
+  - [agents]: Adds openai-agents for agent orchestration
+  - [dev]: Adds pytest, pytest-asyncio, pytest-cov, httpx for testing
+  - [all]: Installs all optional dependencies
+
+Install with: pip install openai-apis[audio] or uv sync --extra audio
+
+Note: Some imports (e.g., RealtimeVoiceAPI) may be None if optional dependencies
+are not installed. Features that require optional dependencies will raise helpful
+ImportError messages if used without the required packages.
+"""
 
 __version__ = "0.1.0"
 

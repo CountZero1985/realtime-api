@@ -41,10 +41,37 @@ echo "OPENAI_API_KEY=your_openai_api_key_here" > .env
 ```
 
 3. **Install dependencies**
+
+The package supports modular installation via optional extras:
+
 ```bash
-uv sync        # recommended
-# or: pip install -e .
+# Core library only (for basic imports and config)
+pip install -e .
+
+# With audio support (transcription, TTS, realtime) - RECOMMENDED
+pip install -e ".[audio]"
+# or with uv:
+uv sync --extra audio
+
+# With all features (audio + web + agents)
+pip install -e ".[all]"
+# or with uv:
+uv sync --extra all
+
+# Development dependencies
+pip install -e ".[dev]"
+# or with uv:
+uv sync --extra dev
 ```
+
+**Optional extras:**
+- `audio`: Adds `sounddevice`, `numpy`, `websocket-client` (required for transcription, TTS, realtime)
+- `web`: Adds `fastapi`, `uvicorn`, `python-multipart`, `aiofiles` (for web server features)
+- `agents`: Adds `openai-agents` (for agent orchestration)
+- `dev`: Adds `pytest`, `pytest-asyncio`, `pytest-cov`, `httpx` (for testing)
+- `all`: Installs all optional dependencies
+
+For running the examples, install with `[audio]` or `[all]`.
 
 ### Running the Examples
 
@@ -354,9 +381,22 @@ cat .env  # Should show: OPENAI_API_KEY=sk-...
 
 ### Import errors
 ```bash
-uv sync  # or: pip install -e .
+# If you see "numpy is required" or "sounddevice is required" errors:
+pip install -e ".[audio]"  # or: uv sync --extra audio
+
+# Generic solution:
+uv sync --extra all  # or: pip install -e ".[all]"
 python --version  # Should be >= 3.12
 ```
+
+### Missing optional dependencies
+The package uses lazy imports for optional dependencies. If you try to use a feature without its dependencies installed, you'll see a helpful error message like:
+
+```
+ImportError: numpy is required for this feature. Install it with: pip install openai-apis[audio]
+```
+
+Install the appropriate extra to resolve the error.
 
 ### Transcription in wrong language
 Update STT settings: `STTModelSettings(language="hu")` - change to correct language code.

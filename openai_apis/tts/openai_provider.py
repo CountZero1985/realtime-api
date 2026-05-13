@@ -13,6 +13,9 @@ Features:
 - Async and sync interfaces
 - Clean error handling
 
+Requirements:
+- Requires numpy for audio processing (install with: pip install openai-apis[audio])
+
 Example usage:
     from openai_apis.tts import OpenAITTSProvider, TTSConfig
 

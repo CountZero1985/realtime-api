@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Dependency restructuring** - Reorganized package dependencies for modular installation:
+  - **Core dependencies**: Only `openai`, `websockets`, and `python-dotenv` required for basic imports
+  - **Optional extras**:
+    - `audio`: Adds `sounddevice`, `numpy`, `websocket-client` for transcription, TTS, and realtime features
+    - `web`: Adds `fastapi`, `uvicorn`, `python-multipart`, `aiofiles` for web server functionality
+    - `agents`: Adds `openai-agents` for agent orchestration features
+    - `dev`: Adds `pytest`, `pytest-asyncio`, `pytest-cov`, `httpx` for development and testing
+    - `all`: Installs all optional dependencies
+  - Conditional imports: `numpy`, `sounddevice`, and `websocket-client` now imported lazily with helpful error messages
+  - Install with: `pip install openai-apis[audio]` or `uv sync --extra audio` for full functionality
+
 ### Added
 
 - **Example applications restored** - Moved application-level code from git history into `examples/` directory:

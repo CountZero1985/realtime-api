@@ -1,4 +1,9 @@
-"""Realtime Voice API - WebSocket-based realtime voice sessions."""
+"""
+Realtime Voice API - WebSocket-based realtime voice sessions.
+
+Requires optional audio dependencies (websocket-client, numpy, sounddevice).
+Install with: pip install openai-apis[audio]
+"""
 from openai_apis.realtime.config import RealtimeConfig
 
 try:

@@ -13,6 +13,9 @@ Features:
 - Direct numpy array or file path input
 - Clean error handling
 
+Requirements:
+- Requires numpy for audio processing (install with: pip install openai-apis[audio])
+
 Example usage:
     from openai_apis.transcription import TranscriptionAPI, TranscriptionConfig
 

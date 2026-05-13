@@ -14,6 +14,10 @@ Features:
 - Event callbacks for all realtime events
 - Session configuration and lifecycle management
 
+Requirements:
+- Requires websocket-client, numpy, and sounddevice for audio I/O
+- Install with: pip install openai-apis[audio]
+
 Example usage:
     from openai_apis.realtime import RealtimeVoiceAPI, RealtimeConfig
 
