@@ -50,6 +50,19 @@ from openai_apis.tts.config import TTSConfig
 from openai_apis.tts.base import BaseTTSProvider
 
 
+class TTSSynthesisError(Exception):
+    """Raised when TTS synthesis fails due to API or processing errors."""
+    pass
+
+
+# OpenAI TTS supported voices
+OPENAI_TTS_VOICES: list[str] = [
+    "alloy", "ash", "ballad", "coral", "echo",
+    "fable", "nova", "onyx", "sage", "shimmer",
+    "verse", "marin", "cedar",
+]
+
+
 class OpenAITTSProvider(BaseTTSProvider):
     """
     Stateless text-to-speech synthesis API using OpenAI.
@@ -103,7 +116,7 @@ class OpenAITTSProvider(BaseTTSProvider):
     @property
     def supported_voices(self) -> list[str]:
         """List of voices supported by OpenAI TTS."""
-        return ["ash", "sage", "alloy", "echo", "shimmer"]
+        return list(OPENAI_TTS_VOICES)
 
     @property
     def provider_name(self) -> str:
@@ -246,7 +259,7 @@ class OpenAITTSProvider(BaseTTSProvider):
                     yield chunk
 
         except Exception as e:
-            raise Exception(f"TTS synthesis failed: {e}") from e
+            raise TTSSynthesisError(f"TTS synthesis failed: {e}") from e
 
     async def synthesize_batch(
         self,
@@ -432,14 +445,13 @@ class OpenAITTSProvider(BaseTTSProvider):
                 error=str(e)
             )
 
-            raise Exception(f"TTS synthesis failed: {e}") from e
+            raise TTSSynthesisError(f"TTS synthesis failed: {e}") from e
 
     def _validate_voice(self, voice: str) -> None:
         """Validate voice parameter."""
-        valid_voices = ["ash", "sage", "alloy", "echo", "shimmer"]
-        if voice not in valid_voices:
+        if voice not in OPENAI_TTS_VOICES:
             raise ValueError(
-                f"Invalid voice '{voice}'. Must be one of: {', '.join(valid_voices)}"
+                f"Invalid voice '{voice}'. Must be one of: {', '.join(OPENAI_TTS_VOICES)}"
             )
 
     def _validate_speed(self, speed: float) -> None:
