@@ -38,7 +38,15 @@ from openai_apis._config import BaseConfig, AudioFormat, VADConfig
 from openai_apis.transcription import TranscriptionAPI, TranscriptionConfig
 
 # TTS (M1)
-from openai_apis.tts import TTSAPI, TTSConfig, OpenAITTSProvider, BaseTTSProvider
+from openai_apis.tts import (
+    TTSAPI,
+    TTSConfig,
+    OpenAITTSProvider,
+    BaseTTSProvider,
+    TTSSynthesisError,
+    register_provider,
+    get_provider,
+)
 
 # Realtime (M3) - Optional: requires audio dependencies
 try:
@@ -72,6 +80,9 @@ __all__ = [
     "TTSConfig",
     "OpenAITTSProvider",
     "BaseTTSProvider",
+    "TTSSynthesisError",
+    "register_provider",
+    "get_provider",
     # Realtime
     "RealtimeVoiceAPI",
     "RealtimeConfig",
