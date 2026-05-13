@@ -73,11 +73,12 @@ class TestTTSConfig:
         config = TTSConfig()
         assert config.model == "gpt-4o-mini-tts"
         assert config.voice == "ash"
-        assert config.speed == 4.0
+        assert config.speed == 1.0  # Changed from 4.0 to 1.0 (normal speech speed)
         assert config.output_format == "pcm"
         assert config.sample_rate == 24000
         assert config.api_key is None
         assert config.timeout == 30.0
+        assert config.instructions is None  # New field
 
     def test_custom_config(self, custom_tts_config):
         """Test custom configuration values."""
@@ -363,8 +364,10 @@ class TestTTSAPI:
         with patch.dict('os.environ', {'OPENAI_API_KEY': 'test-key'}):
             api = TTSAPI()
 
-            # Should not raise
-            for voice in ["ash", "sage", "alloy", "echo", "shimmer"]:
+            # Should not raise - all 13 voices
+            for voice in ["alloy", "ash", "ballad", "coral", "echo",
+                          "fable", "nova", "onyx", "sage", "shimmer",
+                          "verse", "marin", "cedar"]:
                 api._validate_voice(voice)
 
     def test_validate_voice_invalid(self):
@@ -560,7 +563,10 @@ class TestTTSAPIEdgeCases:
 
             mock_audio_bytes = np.array([1, 2], dtype=np.int16).tobytes()
 
-            for voice in ["ash", "sage", "alloy", "echo", "shimmer"]:
+            # All 13 voices
+            for voice in ["alloy", "ash", "ballad", "coral", "echo",
+                          "fable", "nova", "onyx", "sage", "shimmer",
+                          "verse", "marin", "cedar"]:
                 with patch.object(api, '_synthesize_bytes', return_value=mock_audio_bytes):
                     result = await api.synthesize("Test", voice=voice)
                     assert isinstance(result, np.ndarray)

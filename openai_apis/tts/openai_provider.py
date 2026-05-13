@@ -7,11 +7,13 @@ using OpenAI's TTS models. No conversation history or state management.
 
 Features:
 - Stateless text-to-speech synthesis
-- Multiple voice options (ash, sage, alloy, echo, shimmer)
+- 13 voice options (alloy, ash, ballad, coral, echo, fable, nova, onyx, sage, shimmer, verse, marin, cedar)
 - Speed control (0.25 - 4.0)
+- Instruction-based voice steering (gpt-4o-mini-tts only)
 - Multiple output formats (numpy array, file, streaming)
 - Async and sync interfaces
-- Clean error handling
+- Comprehensive audit logging for streaming
+- Clean error handling with TTSSynthesisError
 
 Requirements:
 - Requires numpy for audio processing (install with: pip install openai-apis[audio])
@@ -48,6 +50,19 @@ from openai import AsyncOpenAI, OpenAI
 from openai_apis._logging import get_logger, set_correlation_id, log_audit_event, log_performance, log_api_call
 from openai_apis.tts.config import TTSConfig
 from openai_apis.tts.base import BaseTTSProvider
+
+
+class TTSSynthesisError(Exception):
+    """Raised when TTS synthesis fails due to API or processing errors."""
+    pass
+
+
+# OpenAI TTS supported voices
+OPENAI_TTS_VOICES: list[str] = [
+    "alloy", "ash", "ballad", "coral", "echo",
+    "fable", "nova", "onyx", "sage", "shimmer",
+    "verse", "marin", "cedar",
+]
 
 
 class OpenAITTSProvider(BaseTTSProvider):
@@ -103,7 +118,7 @@ class OpenAITTSProvider(BaseTTSProvider):
     @property
     def supported_voices(self) -> list[str]:
         """List of voices supported by OpenAI TTS."""
-        return ["ash", "sage", "alloy", "echo", "shimmer"]
+        return list(OPENAI_TTS_VOICES)
 
     @property
     def provider_name(self) -> str:
@@ -114,7 +129,8 @@ class OpenAITTSProvider(BaseTTSProvider):
         self,
         text: str,
         voice: Optional[str] = None,
-        speed: Optional[float] = None
+        speed: Optional[float] = None,
+        instructions: Optional[str] = None
     ) -> "np.ndarray":
         """
         Synthesize text to speech as numpy array (async).
@@ -123,13 +139,14 @@ class OpenAITTSProvider(BaseTTSProvider):
             text: Text to synthesize.
             voice: Optional voice (overrides config).
             speed: Optional speed (overrides config).
+            instructions: Optional instruction-based voice steering (overrides config).
 
         Returns:
             Audio data as numpy array (int16, mono, 24kHz for PCM).
 
         Raises:
             ValueError: If text is empty or parameters are invalid.
-            Exception: If synthesis fails.
+            TTSSynthesisError: If synthesis fails.
         """
         if np is None:
             raise ImportError(
@@ -141,7 +158,7 @@ class OpenAITTSProvider(BaseTTSProvider):
             raise ValueError("Text cannot be empty")
 
         # Get audio bytes
-        audio_bytes = await self._synthesize_bytes(text, voice, speed)
+        audio_bytes = await self._synthesize_bytes(text, voice, speed, instructions)
 
         # Convert to numpy array
         if self.config.output_format == "pcm":
@@ -161,7 +178,8 @@ class OpenAITTSProvider(BaseTTSProvider):
         text: str,
         file_path: Union[str, Path],
         voice: Optional[str] = None,
-        speed: Optional[float] = None
+        speed: Optional[float] = None,
+        instructions: Optional[str] = None
     ) -> Path:
         """
         Synthesize text to speech and save to file (async).
@@ -171,13 +189,14 @@ class OpenAITTSProvider(BaseTTSProvider):
             file_path: Output file path (extension determines format).
             voice: Optional voice (overrides config).
             speed: Optional speed (overrides config).
+            instructions: Optional instruction-based voice steering (overrides config).
 
         Returns:
             Path to saved file.
 
         Raises:
             ValueError: If text is empty or parameters are invalid.
-            Exception: If synthesis fails.
+            TTSSynthesisError: If synthesis fails.
         """
         if not text or not text.strip():
             raise ValueError("Text cannot be empty")
@@ -185,7 +204,7 @@ class OpenAITTSProvider(BaseTTSProvider):
         file_path = Path(file_path)
 
         # Get audio bytes
-        audio_bytes = await self._synthesize_bytes(text, voice, speed)
+        audio_bytes = await self._synthesize_bytes(text, voice, speed, instructions)
 
         # Save to file
         if self.config.output_format == "pcm":
@@ -206,7 +225,8 @@ class OpenAITTSProvider(BaseTTSProvider):
         self,
         text: str,
         voice: Optional[str] = None,
-        speed: Optional[float] = None
+        speed: Optional[float] = None,
+        instructions: Optional[str] = None
     ) -> AsyncIterator[bytes]:
         """
         Synthesize text to speech with streaming (async).
@@ -215,13 +235,14 @@ class OpenAITTSProvider(BaseTTSProvider):
             text: Text to synthesize.
             voice: Optional voice (overrides config).
             speed: Optional speed (overrides config).
+            instructions: Optional instruction-based voice steering (overrides config).
 
         Yields:
             Audio chunks as bytes.
 
         Raises:
             ValueError: If text is empty or parameters are invalid.
-            Exception: If synthesis fails.
+            TTSSynthesisError: If synthesis fails.
         """
         if not text or not text.strip():
             raise ValueError("Text cannot be empty")
@@ -234,19 +255,57 @@ class OpenAITTSProvider(BaseTTSProvider):
         self._validate_voice(voice_param)
         self._validate_speed(speed_param)
 
+        corr_id = set_correlation_id()
+        start_time = time.time()
+
+        self.logger.info(
+            f"Streaming synthesis: {len(text)} chars",
+            extra={"extra_data": {"text_length": len(text), "voice": voice_param, "model": self.config.model}}
+        )
+
+        log_audit_event(
+            event_type="tts",
+            action="stream_synthesis_started",
+            details={"text_length": len(text), "voice": voice_param, "speed": speed_param, "model": self.config.model}
+        )
+
+        total_bytes = 0
         try:
-            async with self.client.audio.speech.with_streaming_response.create(
-                model=self.config.model,
-                voice=voice_param,
-                speed=speed_param,
-                input=text,
-                response_format=self.config.output_format
-            ) as response:
+            # Build API call kwargs
+            api_kwargs = {
+                "model": self.config.model,
+                "voice": voice_param,
+                "speed": speed_param,
+                "input": text,
+                "response_format": self.config.output_format,
+            }
+
+            # Add instructions for gpt-4o-mini-tts
+            instr = instructions or self.config.instructions
+            if instr and self.config.model == "gpt-4o-mini-tts":
+                api_kwargs["instructions"] = instr
+
+            async with self.client.audio.speech.with_streaming_response.create(**api_kwargs) as response:
                 async for chunk in response.iter_bytes():
+                    total_bytes += len(chunk)
                     yield chunk
 
+            duration_ms = (time.time() - start_time) * 1000
+            log_audit_event(
+                event_type="tts",
+                action="stream_synthesis_completed",
+                details={"text_length": len(text), "total_bytes": total_bytes, "duration_ms": duration_ms},
+                status="success"
+            )
         except Exception as e:
-            raise Exception(f"TTS synthesis failed: {e}") from e
+            duration_ms = (time.time() - start_time) * 1000
+            log_audit_event(
+                event_type="tts",
+                action="stream_synthesis_failed",
+                details={"error": str(e), "duration_ms": duration_ms},
+                status="error"
+            )
+            raise TTSSynthesisError(f"Streaming TTS synthesis failed: {e}") from e
 
     async def synthesize_batch(
         self,
@@ -296,7 +355,8 @@ class OpenAITTSProvider(BaseTTSProvider):
         self,
         text: str,
         voice: Optional[str] = None,
-        speed: Optional[float] = None
+        speed: Optional[float] = None,
+        instructions: Optional[str] = None
     ) -> bytes:
         """
         Internal method to synthesize text and return raw bytes.
@@ -305,6 +365,7 @@ class OpenAITTSProvider(BaseTTSProvider):
             text: Text to synthesize.
             voice: Optional voice (overrides config).
             speed: Optional speed (overrides config).
+            instructions: Optional instruction-based voice steering (overrides config).
 
         Returns:
             Raw audio bytes.
@@ -344,13 +405,21 @@ class OpenAITTSProvider(BaseTTSProvider):
         try:
             api_start = time.time()
 
-            response = await self.client.audio.speech.create(
-                model=self.config.model,
-                voice=voice_param,
-                speed=speed_param,
-                input=text,
-                response_format=self.config.output_format
-            )
+            # Build API call kwargs
+            api_kwargs = {
+                "model": self.config.model,
+                "voice": voice_param,
+                "speed": speed_param,
+                "input": text,
+                "response_format": self.config.output_format,
+            }
+
+            # Add instructions for gpt-4o-mini-tts
+            instr = instructions or self.config.instructions
+            if instr and self.config.model == "gpt-4o-mini-tts":
+                api_kwargs["instructions"] = instr
+
+            response = await self.client.audio.speech.create(**api_kwargs)
 
             # Read all bytes
             audio_bytes = response.read()
@@ -432,14 +501,13 @@ class OpenAITTSProvider(BaseTTSProvider):
                 error=str(e)
             )
 
-            raise Exception(f"TTS synthesis failed: {e}") from e
+            raise TTSSynthesisError(f"TTS synthesis failed: {e}") from e
 
     def _validate_voice(self, voice: str) -> None:
         """Validate voice parameter."""
-        valid_voices = ["ash", "sage", "alloy", "echo", "shimmer"]
-        if voice not in valid_voices:
+        if voice not in OPENAI_TTS_VOICES:
             raise ValueError(
-                f"Invalid voice '{voice}'. Must be one of: {', '.join(valid_voices)}"
+                f"Invalid voice '{voice}'. Must be one of: {', '.join(OPENAI_TTS_VOICES)}"
             )
 
     def _validate_speed(self, speed: float) -> None:

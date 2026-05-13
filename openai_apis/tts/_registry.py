@@ -32,3 +32,13 @@ def get_provider(name: str) -> Type[BaseTTSProvider]:
     if name not in _providers:
         raise KeyError(f"Unknown TTS provider: {name}")
     return _providers[name]
+
+
+# Auto-register built-in providers
+def _register_builtins() -> None:
+    """Register built-in TTS providers."""
+    from openai_apis.tts.openai_provider import OpenAITTSProvider
+    register_provider("openai", OpenAITTSProvider)
+
+
+_register_builtins()
