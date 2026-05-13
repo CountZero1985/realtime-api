@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Comprehensive API documentation** - Added complete API reference and architecture documentation:
+  - `docs/API.md`: Full API reference covering all three core modules (Transcription, TTS, Realtime), configuration classes (AudioFormat, VADConfig, BaseConfig), session infrastructure (BaseSession, SessionState), and logging/audit system
+  - `docs/ARCHITECTURE.md`: System architecture documentation with package structure, module relationships, data flow diagrams, session lifecycle state machine, and provider pattern explanation
+  - Both documents include code examples, method signatures, parameter descriptions, and usage patterns
+
 ### Changed
 
 - **Dependency restructuring** - Reorganized package dependencies for modular installation:
