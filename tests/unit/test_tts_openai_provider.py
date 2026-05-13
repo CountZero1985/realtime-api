@@ -238,6 +238,97 @@ class TestSynthesize:
             with pytest.raises(NotImplementedError, match="requires external decoder"):
                 await provider.synthesize("Test")
 
+    @pytest.mark.asyncio
+    async def test_synthesize_raises_import_error_when_numpy_missing(self, tts_provider):
+        """ImportError when numpy is not available."""
+        with patch('openai_apis.tts.openai_provider.np', None):
+            with pytest.raises(ImportError, match="numpy is required"):
+                await tts_provider.synthesize("Test")
+
+    @pytest.mark.asyncio
+    async def test_synthesize_whitespace_only_raises(self, tts_provider):
+        """ValueError for whitespace-only text."""
+        with pytest.raises(ValueError, match="Text cannot be empty"):
+            await tts_provider.synthesize("   \n\t  ")
+
+    @pytest.mark.asyncio
+    async def test_synthesize_unicode_text(self, tts_provider):
+        """Unicode text synthesized correctly."""
+        mock_audio_bytes = np.array([1, 2], dtype=np.int16).tobytes()
+        with patch.object(tts_provider, '_synthesize_bytes', return_value=mock_audio_bytes):
+            result = await tts_provider.synthesize("Helló világ! 🌍 Ünnepi beszéd")
+            assert isinstance(result, np.ndarray)
+            assert result.dtype == np.int16
+
+    @pytest.mark.asyncio
+    async def test_synthesize_long_text(self, tts_provider):
+        """Very long text passes through to API."""
+        long_text = "A" * 10000
+        mock_audio_bytes = np.array([1], dtype=np.int16).tobytes()
+        with patch.object(tts_provider, '_synthesize_bytes', return_value=mock_audio_bytes) as mock_synth:
+            result = await tts_provider.synthesize(long_text)
+            assert mock_synth.call_args[0][0] == long_text
+
+
+class TestSynthesizeBytesInternal:
+    """Test _synthesize_bytes() internal method."""
+
+    @pytest.mark.asyncio
+    async def test_synthesize_bytes_non_pcm_audio_duration_none(self, mock_env_key):
+        """audio_duration_seconds is None for non-PCM formats."""
+        config = TTSConfig(output_format="mp3")
+        provider = OpenAITTSProvider(config=config)
+        mock_response = Mock()
+        mock_response.read = Mock(return_value=b"mp3 data")
+        provider.client.audio.speech.create = AsyncMock(return_value=mock_response)
+
+        with patch('openai_apis.tts.openai_provider.log_audit_event') as mock_audit:
+            result = await provider._synthesize_bytes("Test text")
+            assert result == b"mp3 data"
+            # Find the synthesis_completed audit call
+            completed_calls = [c for c in mock_audit.call_args_list if c[1].get('action') == 'synthesis_completed']
+            assert len(completed_calls) > 0
+            assert completed_calls[0][1]['details']['audio_duration_seconds'] is None
+
+
+class TestSynthesizeBytesAudit:
+    """Test _synthesize_bytes internal audit logging."""
+
+    @pytest.mark.asyncio
+    async def test_synthesize_bytes_logs_success_events(self, tts_provider):
+        """Successful synthesis logs synthesis_started, synthesis_completed, and performance."""
+        mock_response = Mock()
+        mock_response.read = Mock(return_value=b"\x00\x01\x00\x02")
+        tts_provider.client.audio.speech.create = AsyncMock(return_value=mock_response)
+
+        with patch('openai_apis.tts.openai_provider.log_audit_event') as mock_audit:
+            with patch('openai_apis.tts.openai_provider.log_api_call') as mock_api_call:
+                with patch('openai_apis.tts.openai_provider.log_performance') as mock_perf:
+                    await tts_provider._synthesize_bytes("Test")
+
+                    audit_actions = [c[1]['action'] for c in mock_audit.call_args_list]
+                    assert 'synthesis_started' in audit_actions
+                    assert 'synthesis_completed' in audit_actions
+                    mock_api_call.assert_called()
+                    mock_perf.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_synthesize_bytes_logs_failure_events(self, tts_provider):
+        """Failed synthesis logs synthesis_started, synthesis_failed, and error api_call."""
+        tts_provider.client.audio.speech.create = AsyncMock(side_effect=Exception("API down"))
+
+        with patch('openai_apis.tts.openai_provider.log_audit_event') as mock_audit:
+            with patch('openai_apis.tts.openai_provider.log_api_call') as mock_api_call:
+                with pytest.raises(TTSSynthesisError):
+                    await tts_provider._synthesize_bytes("Test")
+
+                audit_actions = [c[1]['action'] for c in mock_audit.call_args_list]
+                assert 'synthesis_started' in audit_actions
+                assert 'synthesis_failed' in audit_actions
+                # Error API call should include error kwarg
+                error_calls = [c for c in mock_api_call.call_args_list if c[1].get('error')]
+                assert len(error_calls) > 0
+
 
 class TestSynthesizeStream:
     """Test synthesize_stream() method."""
@@ -487,6 +578,31 @@ class TestSynthesizeStream:
             assert 'chunk_size' in complete_details
             assert 'chunk_count' in complete_details
 
+    @pytest.mark.asyncio
+    async def test_stream_backpressure_on_final_partial_chunk(self, mock_env_key):
+        """Backpressure event also applies to final partial chunk."""
+        config = TTSConfig(chunk_size=8)
+        provider = OpenAITTSProvider(config=config)
+
+        async def mock_iter_bytes():
+            yield b"abc"  # Less than chunk_size, will be final chunk
+
+        mock_response = MagicMock()
+        mock_response.iter_bytes = mock_iter_bytes
+        mock_response.__aenter__ = AsyncMock(return_value=mock_response)
+        mock_response.__aexit__ = AsyncMock(return_value=None)
+
+        provider.client.audio.speech.with_streaming_response.create = Mock(return_value=mock_response)
+
+        backpressure_event = asyncio.Event()
+        backpressure_event.set()
+
+        chunks = []
+        async for chunk in provider.synthesize_stream("Test", backpressure_event=backpressure_event):
+            chunks.append(chunk)
+
+        assert chunks == [b"abc"]
+
 
 class TestSynthesizeToFile:
     """Test synthesize_to_file() method."""
@@ -619,6 +735,48 @@ class TestRegistry:
         """KeyError for unknown name."""
         with pytest.raises(KeyError, match="Unknown TTS provider"):
             get_provider("unknown_provider")
+
+
+class TestConvenienceFunctions:
+    """Test module-level convenience functions."""
+
+    @pytest.mark.asyncio
+    async def test_synthesize_text(self, mock_env_key):
+        """synthesize_text() creates provider and delegates to synthesize."""
+        mock_audio = np.array([1, 2], dtype=np.int16)
+        with patch.object(OpenAITTSProvider, 'synthesize', return_value=mock_audio) as mock_synth:
+            from openai_apis.tts.openai_provider import synthesize_text
+            result = await synthesize_text("Test")
+            mock_synth.assert_called_once_with("Test")
+            np.testing.assert_array_equal(result, mock_audio)
+
+    @pytest.mark.asyncio
+    async def test_synthesize_to_file_convenience(self, mock_env_key, tmp_path):
+        """synthesize_to_file() creates provider and delegates."""
+        out_path = tmp_path / "out.wav"
+        with patch.object(OpenAITTSProvider, 'synthesize_to_file', return_value=out_path) as mock_to_file:
+            from openai_apis.tts.openai_provider import synthesize_to_file as synth_to_file_fn
+            result = await synth_to_file_fn("Test", out_path)
+            mock_to_file.assert_called_once_with("Test", out_path)
+            assert result == out_path
+
+    def test_synthesize_text_sync(self, mock_env_key):
+        """synthesize_text_sync() wraps async via asyncio.run."""
+        from openai_apis.tts.openai_provider import synthesize_text_sync
+        mock_audio = np.array([1], dtype=np.int16)
+        with patch('openai_apis.tts.openai_provider.synthesize_text', return_value=mock_audio):
+            with patch('asyncio.run', return_value=mock_audio) as mock_run:
+                result = synthesize_text_sync("Test")
+                mock_run.assert_called_once()
+
+    def test_synthesize_to_file_sync_convenience(self, mock_env_key, tmp_path):
+        """synthesize_to_file_sync() wraps async via asyncio.run."""
+        from openai_apis.tts.openai_provider import synthesize_to_file_sync as synth_to_file_sync_fn
+        out_path = tmp_path / "out.wav"
+        with patch('openai_apis.tts.openai_provider.synthesize_to_file', return_value=out_path):
+            with patch('asyncio.run', return_value=out_path) as mock_run:
+                result = synth_to_file_sync_fn("Test", out_path)
+                mock_run.assert_called_once()
 
 
 class TestTTSConfig:
