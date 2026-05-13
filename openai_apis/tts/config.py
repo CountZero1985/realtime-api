@@ -21,9 +21,10 @@ class TTSConfig(BaseConfig):
         instructions: Voice steering instructions (OpenAI gpt-4o-mini-tts specific).
         language: Language hint (ISO-639-1 code).
         sample_rate: Sample rate in Hz (only relevant for PCM format).
+        chunk_size: Streaming chunk size in bytes (must be > 0, default: 1024).
 
     Raises:
-        ValueError: If speed, voice, output_format, or provider is invalid.
+        ValueError: If speed, voice, output_format, chunk_size, or provider is invalid.
     """
 
     # Provider

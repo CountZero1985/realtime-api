@@ -164,10 +164,32 @@ api = TTSAPI(config=config)
 # Save to file
 await api.synthesize_to_file("Hello world!", "output.mp3")
 
-# Streaming synthesis
+# Streaming synthesis with configurable chunk size
+config = TTSConfig(chunk_size=2048)  # 2KB chunks
+api = TTSAPI(config=config)
 async for chunk in api.synthesize_stream("Long text..."):
-    # Process audio chunks as they arrive
+    # Process audio chunks as they arrive (uniform 2KB chunks)
     pass
+
+# Or override chunk size per call
+async for chunk in api.synthesize_stream("Text", chunk_size=512):
+    # 512-byte chunks for this call only
+    pass
+
+# Backpressure control for flow management
+import asyncio
+backpressure = asyncio.Event()
+backpressure.set()  # Must be set initially to allow streaming
+
+async for chunk in api.synthesize_stream("Text", backpressure_event=backpressure):
+    # Process chunk
+    play_audio(chunk)
+    # Pause streaming if needed
+    if should_pause():
+        backpressure.clear()  # Pauses next chunk
+    # Resume later
+    if should_resume():
+        backpressure.set()  # Resumes streaming
 
 # Sync usage
 audio = api.synthesize_sync("Hello!")

@@ -11,6 +11,8 @@ Features:
 - Speed control (0.25 - 4.0)
 - Instruction-based voice steering (gpt-4o-mini-tts only)
 - Multiple output formats (numpy array, file, streaming)
+- Configurable streaming chunk size with re-chunking buffer
+- Backpressure control for streaming via asyncio.Event
 - Async and sync interfaces
 - Comprehensive audit logging for streaming
 - Clean error handling with TTSSynthesisError
