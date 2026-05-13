@@ -138,3 +138,34 @@ class TestTTSConfigElevenLabsProvider:
     def test_elevenlabs_invalid_voice_rejected(self):
         with pytest.raises(ValueError, match="Invalid voice"):
             TTSConfig(provider="elevenlabs", voice="ash")  # ash is OpenAI-only
+
+
+class TestTTSConfigUnknownRegisteredProvider:
+    """Test voice validation skip for unknown-but-registered custom providers."""
+
+    def test_custom_provider_skips_voice_validation(self):
+        """Custom registered provider bypasses voice list validation."""
+        from openai_apis.tts._registry import TTSRegistry
+        from openai_apis.tts.base import BaseTTSProvider
+
+        class CustomProvider(BaseTTSProvider):
+            @property
+            def provider_name(self): return "custom"
+            @property
+            def supported_voices(self): return ["any_voice"]
+            async def synthesize(self, text, voice=None, speed=None): ...
+            async def synthesize_stream(self, text, voice=None, speed=None, chunk_size=None):
+                yield b""
+            async def synthesize_to_file(self, text, file_path, voice=None, speed=None):
+                from pathlib import Path
+                return Path(file_path)
+
+        TTSRegistry.register("custom_test", CustomProvider)
+        try:
+            # voice "any_voice" would be invalid for openai/elevenlabs
+            # but for custom provider, voice validation is skipped (line 86)
+            config = TTSConfig(provider="custom_test", voice="any_voice")
+            assert config.provider == "custom_test"
+            assert config.voice == "any_voice"
+        finally:
+            TTSRegistry._providers.pop("custom_test", None)

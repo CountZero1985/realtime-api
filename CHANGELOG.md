@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **TTS Module Enhanced Test Coverage** - Expanded unit test suite to achieve 93%+ coverage (issue #16):
+  - **Convenience function tests**: Added tests for module-level convenience functions (`synthesize_text`, `synthesize_to_file`, `synthesize_text_sync`, `synthesize_to_file_sync`) in `test_tts_openai_provider.py`
+  - **Edge case coverage**: Added tests for Unicode text, very long text (10,000 chars), and whitespace-only input validation
+  - **Import error handling**: Added test for numpy ImportError guard in `synthesize()` method
+  - **Audio duration calculation**: Added test for non-PCM formats where `audio_duration_seconds` returns None
+  - **Backpressure final chunk**: Added test for backpressure event handling on final partial chunk in streaming
+  - **Audit logging paths**: Added tests for `_synthesize_bytes` success and failure audit event logging
+  - **Custom provider voice validation**: Added test for unknown-but-registered provider voice validation skip in `test_tts_config.py`
+  - Coverage results: `openai_provider.py` 93%, `config.py` 100%, `_registry.py` 100%, `base.py` 92%, aggregate TTS module 93%+
+  - Total TTS test suite: 111 passing tests across 4 test files
+
+### Added
+
 - **TTS Streaming Enhancements** - Added configurable chunk size and backpressure support for `synthesize_stream()` (issue #15):
   - **`chunk_size` field in `TTSConfig`**: New field (default: 1024 bytes) for configurable streaming chunk size with validation (must be > 0)
   - **Re-chunking buffer**: API response bytes are buffered and yielded in uniform chunks of exactly `chunk_size` bytes (except potentially the final chunk)
