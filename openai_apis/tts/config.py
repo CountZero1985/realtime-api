@@ -12,8 +12,9 @@ class TTSConfig(BaseConfig):
     model: str = "gpt-4o-mini-tts"  # or "tts-1", "tts-1-hd"
 
     # Voice settings
-    voice: str = "ash"  # ash, sage, alloy, echo, shimmer
-    speed: float = 4.0  # 0.25 - 4.0
+    voice: str = "ash"  # ash, sage, alloy, echo, shimmer, etc.
+    speed: float = 1.0  # 0.25 - 4.0 (normal speech speed)
+    instructions: Optional[str] = None  # Instruction-based voice steering (gpt-4o-mini-tts only)
 
     # Audio settings
     output_format: str = "pcm"  # pcm, mp3, opus, aac, flac
