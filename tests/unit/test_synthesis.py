@@ -258,7 +258,8 @@ class TestTTSAPI:
             async for chunk in api.synthesize_stream("Test"):
                 chunks.append(chunk)
 
-            assert chunks == [b"chunk1", b"chunk2", b"chunk3"]
+            # With default chunk_size=1024, small chunks are buffered together
+            assert chunks == [b"chunk1chunk2chunk3"]
 
     @pytest.mark.asyncio
     async def test_synthesize_stream_empty_text(self):
@@ -631,7 +632,13 @@ class TestTTSAPIEdgeCases:
             async for chunk in api.synthesize_stream("Test"):
                 chunks.append(chunk)
 
-            assert len(chunks) == 100
+            # With default chunk_size=1024, chunks are buffered and re-chunked
+            # Each original chunk is ~6-7 bytes ("chunk0" to "chunk99")
+            # Total: ~650 bytes, which is < 1024, so all buffered into 1 chunk
+            assert len(chunks) == 1
+            # Verify all data is present
+            assert b"chunk0" in chunks[0]
+            assert b"chunk99" in chunks[0]
 
     def test_config_validation_at_init(self):
         """Test that invalid config values are rejected at config creation."""
