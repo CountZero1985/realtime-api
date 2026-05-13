@@ -13,6 +13,9 @@ Features:
 - Async and sync interfaces
 - Clean error handling
 
+Requirements:
+- Requires numpy for audio processing (install with: pip install openai-apis[audio])
+
 Example usage:
     from openai_apis.tts import OpenAITTSProvider, TTSConfig
 
@@ -33,7 +36,10 @@ import os
 import io
 import wave
 import time
-import numpy as np
+try:
+    import numpy as np
+except ImportError:
+    np = None
 from typing import Optional, Union, AsyncIterator
 from dataclasses import asdict
 from pathlib import Path
@@ -99,7 +105,7 @@ class OpenAITTSProvider(BaseTTSProvider):
         text: str,
         voice: Optional[str] = None,
         speed: Optional[float] = None
-    ) -> np.ndarray:
+    ) -> "np.ndarray":
         """
         Synthesize text to speech as numpy array (async).
 
@@ -115,6 +121,12 @@ class OpenAITTSProvider(BaseTTSProvider):
             ValueError: If text is empty or parameters are invalid.
             Exception: If synthesis fails.
         """
+        if np is None:
+            raise ImportError(
+                "numpy is required for this feature. "
+                "Install it with: pip install openai-apis[audio]"
+            )
+
         if not text or not text.strip():
             raise ValueError("Text cannot be empty")
 
@@ -231,7 +243,7 @@ class OpenAITTSProvider(BaseTTSProvider):
         text: str,
         voice: Optional[str] = None,
         speed: Optional[float] = None
-    ) -> np.ndarray:
+    ) -> "np.ndarray":
         """
         Synthesize text to speech as numpy array (sync).
 
@@ -243,6 +255,11 @@ class OpenAITTSProvider(BaseTTSProvider):
         Returns:
             Audio data as numpy array (int16, mono, 24kHz for PCM).
         """
+        if np is None:
+            raise ImportError(
+                "numpy is required for this feature. "
+                "Install it with: pip install openai-apis[audio]"
+            )
         return asyncio.run(self.synthesize(text, voice, speed))
 
     def synthesize_to_file_sync(

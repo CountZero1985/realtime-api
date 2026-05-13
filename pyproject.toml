@@ -5,19 +5,17 @@ description = "Unified OpenAI API interfaces for voice and text interactions"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "openai>=1.0.0",
+    "websockets>=12.0",
     "python-dotenv>=0.21.0",
-    "numpy>=2.4.0",
-    "sounddevice>=0.5.3",
-    "websocket-client>=1.5.0",
-    "openai-agents",
 ]
 
 [project.optional-dependencies]
-dev = [
-    "pytest>=7.0.0",
-    "pytest-asyncio>=0.21.0",
-    "pytest-cov>=4.0.0",
-]
+audio = ["sounddevice>=0.5.3", "numpy>=2.4.0", "websocket-client>=1.5.0"]
+web = ["fastapi", "uvicorn", "python-multipart", "aiofiles"]
+agents = ["openai-agents"]
+dev = ["pytest>=7.0.0", "pytest-asyncio>=0.21.0", "pytest-cov>=4.0.0", "httpx"]
+all = ["openai-apis[audio,web,agents]"]
 
 [build-system]
 requires = ["hatchling"]

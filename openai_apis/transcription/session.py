@@ -13,6 +13,9 @@ Features:
 - Direct numpy array or file path input
 - Clean error handling
 
+Requirements:
+- Requires numpy for audio processing (install with: pip install openai-apis[audio])
+
 Example usage:
     from openai_apis.transcription import TranscriptionAPI, TranscriptionConfig
 
@@ -35,7 +38,10 @@ import os
 import tempfile
 import wave
 import time
-import numpy as np
+try:
+    import numpy as np
+except ImportError:
+    np = None
 from typing import Optional, Union
 from dataclasses import asdict
 from pathlib import Path
@@ -97,7 +103,7 @@ class TranscriptionAPI:
 
     async def transcribe(
         self,
-        audio: np.ndarray,
+        audio: "np.ndarray",
         language: Optional[str] = None,
         prompt: Optional[str] = None
     ) -> str:
@@ -116,6 +122,12 @@ class TranscriptionAPI:
             ValueError: If audio format is invalid.
             Exception: If transcription fails.
         """
+        if np is None:
+            raise ImportError(
+                "numpy is required for this feature. "
+                "Install it with: pip install openai-apis[audio]"
+            )
+
         corr_id = set_correlation_id()
         start_time = time.time()
 
@@ -335,7 +347,7 @@ class TranscriptionAPI:
 
     def transcribe_sync(
         self,
-        audio: np.ndarray,
+        audio: "np.ndarray",
         language: Optional[str] = None,
         prompt: Optional[str] = None
     ) -> str:
@@ -350,6 +362,11 @@ class TranscriptionAPI:
         Returns:
             Transcribed text.
         """
+        if np is None:
+            raise ImportError(
+                "numpy is required for this feature. "
+                "Install it with: pip install openai-apis[audio]"
+            )
         return asyncio.run(self.transcribe(audio, language, prompt))
 
     def transcribe_file_sync(
@@ -416,7 +433,7 @@ class TranscriptionAPI:
 
 # Convenience functions
 async def transcribe_audio(
-    audio: np.ndarray,
+    audio: "np.ndarray",
     language: str = "hu",
     model: str = "gpt-4o-mini-transcribe"
 ) -> str:
@@ -468,7 +485,7 @@ async def transcribe_file(
 
 
 def transcribe_audio_sync(
-    audio: np.ndarray,
+    audio: "np.ndarray",
     language: str = "hu",
     model: str = "gpt-4o-mini-transcribe"
 ) -> str:
