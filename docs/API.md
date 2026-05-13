@@ -498,45 +498,118 @@ config = TTSConfig(
 
 ### BaseTTSProvider
 
-Abstract base class for TTS providers. Defines the provider interface.
+Abstract base class for TTS providers. Defines the provider interface that all TTS providers must implement. Provides concrete sync wrapper methods that delegate to the async abstract methods.
 
 **Type:** Abstract class
 
 #### Abstract Methods
 
-Subclasses must implement:
+Subclasses must implement these async methods:
 
-**`synthesize(text: str, voice: Optional[str] = None, speed: Optional[float] = None) -> np.ndarray`**
+**`async synthesize(text: str, voice: Optional[str] = None, speed: Optional[float] = None) -> np.ndarray`**
 
-Synthesize text to audio (async).
+Synthesize text to audio as numpy array (async).
 
-**`synthesize_stream(text: str, voice: Optional[str] = None, speed: Optional[float] = None) -> AsyncIterator[np.ndarray]`**
+- **Parameters:**
+  - `text` (`str`): Text to synthesize
+  - `voice` (`Optional[str]`): Voice override (provider-specific)
+  - `speed` (`Optional[float]`): Speed multiplier override
+- **Returns:** `np.ndarray` - Audio data as numpy array
+
+**`async synthesize_stream(text: str, voice: Optional[str] = None, speed: Optional[float] = None) -> AsyncIterator[bytes]`**
 
 Synthesize text to audio with streaming (async).
+
+- **Parameters:**
+  - `text` (`str`): Text to synthesize
+  - `voice` (`Optional[str]`): Voice override (provider-specific)
+  - `speed` (`Optional[float]`): Speed multiplier override
+- **Yields:** `bytes` - Audio chunks
+
+**`async synthesize_to_file(text: str, file_path: Union[str, Path], voice: Optional[str] = None, speed: Optional[float] = None) -> Path`**
+
+Synthesize text to audio and save to file (async).
+
+- **Parameters:**
+  - `text` (`str`): Text to synthesize
+  - `file_path` (`Union[str, Path]`): Output file path
+  - `voice` (`Optional[str]`): Voice override (provider-specific)
+  - `speed` (`Optional[float]`): Speed multiplier override
+- **Returns:** `Path` - Path to the saved audio file
+
+#### Abstract Properties
+
+Subclasses must implement these properties:
+
+**`supported_voices` (property) -> list[str]**
+
+List of voices supported by this provider.
+
+**`provider_name` (property) -> str**
+
+Provider identifier (e.g., "openai", "elevenlabs").
+
+#### Concrete Methods
+
+The base class provides these sync wrapper methods (inherited automatically):
+
+**`synthesize_sync(text: str, voice: Optional[str] = None, speed: Optional[float] = None) -> np.ndarray`**
+
+Synchronous wrapper for `synthesize()`. Delegates to the async method using `asyncio.run()`.
+
+**`synthesize_to_file_sync(text: str, file_path: Union[str, Path], voice: Optional[str] = None, speed: Optional[float] = None) -> Path`**
+
+Synchronous wrapper for `synthesize_to_file()`. Delegates to the async method using `asyncio.run()`.
 
 #### Usage
 
 ```python
 from openai_apis.tts import BaseTTSProvider
-from typing import AsyncIterator
+from typing import AsyncIterator, Optional, Union
+from pathlib import Path
 import numpy as np
 
 class MyCustomTTSProvider(BaseTTSProvider):
-    async def synthesize(self, text, voice=None, speed=None):
+    """Custom TTS provider implementation."""
+
+    @property
+    def supported_voices(self) -> list[str]:
+        return ["voice_a", "voice_b", "voice_c"]
+
+    @property
+    def provider_name(self) -> str:
+        return "my_custom_provider"
+
+    async def synthesize(self, text: str, voice: Optional[str] = None,
+                        speed: Optional[float] = None) -> np.ndarray:
         # Implementation here
         return np.array([...], dtype=np.int16)
 
-    async def synthesize_stream(self, text, voice=None, speed=None):
+    async def synthesize_stream(self, text: str, voice: Optional[str] = None,
+                               speed: Optional[float] = None) -> AsyncIterator[bytes]:
         # Implementation here
-        async for chunk in stream:
+        for chunk in chunks:
             yield chunk
+
+    async def synthesize_to_file(self, text: str, file_path: Union[str, Path],
+                                voice: Optional[str] = None,
+                                speed: Optional[float] = None) -> Path:
+        # Implementation here
+        audio = await self.synthesize(text, voice, speed)
+        # Save audio to file...
+        return Path(file_path)
+
+# Usage - sync wrappers are inherited automatically
+provider = MyCustomTTSProvider()
+audio = provider.synthesize_sync("Hello world!")  # No need to implement this
+provider.synthesize_to_file_sync("Text", "output.wav")  # Inherited from base
 ```
 
 ---
 
 ### OpenAITTSProvider (TTSAPI)
 
-OpenAI text-to-speech provider. Also exported as `TTSAPI` alias.
+OpenAI text-to-speech provider. Implements `BaseTTSProvider` interface. Also exported as `TTSAPI` alias for backward compatibility.
 
 **Constructor:**
 
@@ -552,6 +625,20 @@ OpenAITTSProvider(config: Optional[TTSConfig] = None)
 - `client` (`AsyncOpenAI`): Async OpenAI client
 - `sync_client` (`OpenAI`): Sync OpenAI client
 
+#### Properties
+
+**`supported_voices` (property) -> list[str]**
+
+List of voices supported by OpenAI TTS.
+
+- **Returns:** `["ash", "sage", "alloy", "echo", "shimmer"]`
+
+**`provider_name` (property) -> str**
+
+Provider identifier.
+
+- **Returns:** `"openai"`
+
 #### Async Methods
 
 **`synthesize(text, voice=None, speed=None) -> np.ndarray`**
@@ -565,19 +652,19 @@ Synthesize text to speech as numpy array.
 - **Returns:** `np.ndarray` - Audio data (int16, mono, 24kHz for PCM)
 - **Raises:** `ValueError` if text is empty
 
-**`synthesize_to_file(text, output_path, voice=None, speed=None) -> None`**
+**`synthesize_to_file(text, file_path, voice=None, speed=None) -> Path`**
 
 Synthesize text and save to file.
 
 - **Parameters:**
   - `text` (`str`): Text to synthesize
-  - `output_path` (`Union[str, Path]`): Output file path
+  - `file_path` (`Union[str, Path]`): Output file path
   - `voice` (`Optional[str]`): Voice override
   - `speed` (`Optional[float]`): Speed override
-- **Returns:** `None`
+- **Returns:** `Path` - Path to the saved audio file
 - **Raises:** `ValueError` if text is empty
 
-**`synthesize_stream(text, voice=None, speed=None) -> AsyncIterator[np.ndarray]`**
+**`synthesize_stream(text, voice=None, speed=None) -> AsyncIterator[bytes]`**
 
 Synthesize text with streaming audio chunks.
 
@@ -585,7 +672,7 @@ Synthesize text with streaming audio chunks.
   - `text` (`str`): Text to synthesize
   - `voice` (`Optional[str]`): Voice override
   - `speed` (`Optional[float]`): Speed override
-- **Yields:** `np.ndarray` - Audio chunks
+- **Yields:** `bytes` - Audio chunks
 - **Raises:** `ValueError` if text is empty
 
 **`synthesize_batch(texts, voice=None, speed=None) -> list[np.ndarray]`**
@@ -601,10 +688,12 @@ Synthesize multiple texts in batch.
 
 #### Sync Methods
 
-Same signatures as async methods, with `_sync` suffix:
-- `synthesize_sync(text, voice=None, speed=None) -> np.ndarray`
-- `synthesize_to_file_sync(text, output_path, voice=None, speed=None) -> None`
-- `synthesize_batch_sync(texts, voice=None, speed=None) -> list[np.ndarray]`
+**Inherited from `BaseTTSProvider`:**
+- `synthesize_sync(text, voice=None, speed=None) -> np.ndarray` - Synchronous wrapper for `synthesize()`
+- `synthesize_to_file_sync(text, file_path, voice=None, speed=None) -> Path` - Synchronous wrapper for `synthesize_to_file()`
+
+**OpenAI-specific sync methods:**
+- `synthesize_batch_sync(texts, voice=None, speed=None) -> list[np.ndarray]` - Batch synthesis (synchronous)
 
 #### Convenience Functions
 
