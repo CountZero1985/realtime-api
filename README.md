@@ -175,6 +175,14 @@ audio = api.synthesize_sync("Hello!")
 
 **Available voices (13):** alloy, ash, ballad, coral, echo, fable, nova, onyx, sage, shimmer, verse, marin, cedar
 
+**Configuration validation:** `TTSConfig` validates all parameters on initialization:
+- `speed` must be between 0.25 and 4.0
+- `voice` must be in the provider's supported voices list
+- `output_format` must be one of: pcm, mp3, opus, aac, flac, wav
+- `provider` must be registered (currently "openai")
+
+Invalid values raise `ValueError` with clear error messages.
+
 ### Realtime Voice API
 
 ```python

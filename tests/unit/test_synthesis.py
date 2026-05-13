@@ -634,20 +634,23 @@ class TestTTSAPIEdgeCases:
             assert len(chunks) == 100
 
     def test_config_validation_at_init(self):
-        """Test that invalid config values are handled."""
-        # Speed outside range should be caught when used, not at init
+        """Test that invalid config values are rejected at config creation."""
+        # Speed outside range should be caught at config creation time
+        with pytest.raises(ValueError, match="speed must be between 0.25 and 4.0"):
+            config = TTSConfig(
+                voice="ash",
+                speed=10.0,  # Invalid - will be rejected
+                api_key="test-key"
+            )
+
+        # Valid speed should work
         config = TTSConfig(
             voice="ash",
-            speed=10.0,  # Invalid but allowed in config
+            speed=2.0,
             api_key="test-key"
         )
-
         api = TTSAPI(config=config)
-        assert api.config.speed == 10.0  # Stored as-is
-
-        # But validation happens when actually used
-        with pytest.raises(ValueError):
-            api._validate_speed(10.0)
+        assert api.config.speed == 2.0
 
 
 if __name__ == "__main__":

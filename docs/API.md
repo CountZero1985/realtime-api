@@ -463,14 +463,42 @@ Configuration for TTS settings. Extends `BaseConfig`.
 
 | Field | Type | Default | Valid Values | Description |
 |-------|------|---------|--------------|-------------|
+| `provider` | `str` | `"openai"` | Must be registered in provider registry | Provider identifier (validated on init) |
 | `model` | `str` | `"gpt-4o-mini-tts"` | `"gpt-4o-mini-tts"`, `"tts-1"`, `"tts-1-hd"` | TTS model |
-| `voice` | `str` | `"ash"` | See [supported voices](#openaitts-provider-ttsapi) | Voice to use (13 voices available) |
-| `speed` | `float` | `1.0` | 0.25-4.0 | Speech speed multiplier (1.0 = normal speed) |
+| `voice` | `str` | `"ash"` | See [supported voices](#openaitts-provider-ttsapi) | Voice to use (validated against provider, 13 voices for OpenAI) |
+| `speed` | `float` | `1.0` | 0.25-4.0 | Speech speed multiplier (validated on init, 1.0 = normal speed) |
 | `instructions` | `Optional[str]` | `None` | Any string | Voice steering instructions (gpt-4o-mini-tts only) |
-| `output_format` | `str` | `"pcm"` | `"pcm"`, `"mp3"`, `"opus"`, `"aac"`, `"flac"` | Output audio format |
+| `output_format` | `str` | `"pcm"` | `"pcm"`, `"mp3"`, `"opus"`, `"aac"`, `"flac"`, `"wav"` | Output audio format (validated on init) |
+| `language` | `str` | `"hu"` | ISO-639-1 code | Language hint for synthesis |
 | `sample_rate` | `int` | `24000` | > 0 | Sample rate (PCM format only) |
 
 Plus all fields from `BaseConfig` (`api_key`, `timeout`, `audio_format`).
+
+#### Validation
+
+`TTSConfig` validates all parameters on initialization via `__post_init__`:
+
+- **`speed`**: Must be between 0.25 and 4.0 (inclusive). Raises `ValueError` if out of range.
+- **`output_format`**: Must be one of: `"pcm"`, `"mp3"`, `"opus"`, `"aac"`, `"flac"`, `"wav"`. Raises `ValueError` if invalid.
+- **`provider`**: Must be registered in the provider registry. Raises `ValueError` if unknown.
+- **`voice`**: Must be in the provider's `supported_voices`. For OpenAI provider, must be one of 13 supported voices. Raises `ValueError` if invalid.
+
+```python
+# Valid configuration
+config = TTSConfig(speed=2.0, voice="sage", output_format="mp3")
+
+# Invalid speed - raises ValueError
+config = TTSConfig(speed=5.0)  # ValueError: speed must be between 0.25 and 4.0
+
+# Invalid voice - raises ValueError
+config = TTSConfig(voice="unknown")  # ValueError: Invalid voice 'unknown'
+
+# Invalid format - raises ValueError
+config = TTSConfig(output_format="ogg")  # ValueError: output_format must be one of ...
+
+# Invalid provider - raises ValueError
+config = TTSConfig(provider="fake")  # ValueError: Unknown provider 'fake'
+```
 
 #### Usage
 

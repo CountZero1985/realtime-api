@@ -68,8 +68,11 @@ examples/               # Standalone example applications
 ### TTS API (`openai_apis/tts/`)
 - **`OpenAITTSProvider`**: OpenAI text-to-speech provider (also aliased as `TTSAPI`)
 - **`BaseTTSProvider`**: Abstract base class for TTS providers
-- **`TTSConfig`**: Configuration for TTS (model, voice, speed, format)
-- Multiple voice options (ash, sage, alloy, echo, shimmer)
+- **`TTSConfig`**: Configuration for TTS with `__post_init__` validation
+  - Fields: `provider`, `model`, `voice`, `speed`, `instructions`, `output_format`, `language`, `sample_rate`
+  - Validates `speed` (0.25-4.0), `voice` (against provider's supported voices), `output_format` (pcm/mp3/opus/aac/flac/wav), `provider` (must be registered)
+  - Raises `ValueError` for invalid configurations
+- 13 voice options: alloy, ash, ballad, coral, echo, fable, nova, onyx, sage, shimmer, verse, marin, cedar
 - Streaming and batch synthesis
 - Provider-based architecture for future extensibility
 
