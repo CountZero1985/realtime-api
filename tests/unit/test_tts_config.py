@@ -121,3 +121,20 @@ class TestTTSConfigCustomValues:
         assert config.instructions == "Speak slowly"
         assert config.language == "en"
         assert config.sample_rate == 48000
+
+
+class TestTTSConfigElevenLabsProvider:
+    """Test ElevenLabs provider validation in TTSConfig."""
+
+    def test_elevenlabs_provider_accepted(self):
+        config = TTSConfig(provider="elevenlabs", voice="rachel")
+        assert config.provider == "elevenlabs"
+
+    def test_elevenlabs_valid_voices(self):
+        for voice in ["rachel", "adam", "bella"]:
+            config = TTSConfig(provider="elevenlabs", voice=voice)
+            assert config.voice == voice
+
+    def test_elevenlabs_invalid_voice_rejected(self):
+        with pytest.raises(ValueError, match="Invalid voice"):
+            TTSConfig(provider="elevenlabs", voice="ash")  # ash is OpenAI-only
