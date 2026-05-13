@@ -7,8 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **OpenAI TTS Provider - Full Implementation** - Completed `OpenAITTSProvider` with all features from issue #12:
+  - **13 voice support**: Added 8 new voices (ballad, coral, fable, nova, onyx, verse, marin, cedar) to existing 5 voices, total 13 voices now supported
+  - **Instruction-based voice steering**: New `instructions` field in `TTSConfig` for voice customization with `gpt-4o-mini-tts` model
+  - **Enhanced error handling**: New `TTSSynthesisError` exception for clear API error reporting
+  - **Streaming audit logging**: Added comprehensive audit events for `synthesize_stream()` (start, complete, error events)
+  - **Provider registry**: `OpenAITTSProvider` now auto-registered as "openai" provider in `_registry.py`
+  - **Comprehensive tests**: New `tests/unit/test_tts_openai_provider.py` with 100% coverage of all features
+
 ### Changed
 
+- **TTSConfig speed default**: Changed `speed` default from `4.0` (maximum speed) to `1.0` (normal speech speed) for more sensible default behavior
 - **BaseTTSProvider abstract base class enhancements** - Expanded `BaseTTSProvider` in `openai_apis/tts/base.py` with complete provider interface:
   - Added `synthesize_to_file()` abstract method for saving audio directly to files
   - Added `supported_voices` abstract property for listing available voices

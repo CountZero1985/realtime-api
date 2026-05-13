@@ -147,6 +147,15 @@ config = TTSConfig(
 )
 api = TTSAPI(config=config)
 
+# Instruction-based voice steering (gpt-4o-mini-tts only)
+config = TTSConfig(
+    model="gpt-4o-mini-tts",
+    voice="ash",
+    instructions="Speak in a warm, friendly tone with slight excitement"
+)
+api = TTSAPI(config=config)
+audio = await api.synthesize("Hello! How can I help you today?")
+
 # Custom audio format for higher quality
 audio_format = AudioFormat(sample_rate=48000, dtype="float32")
 config = TTSConfig(audio_format=audio_format)
@@ -163,6 +172,8 @@ async for chunk in api.synthesize_stream("Long text..."):
 # Sync usage
 audio = api.synthesize_sync("Hello!")
 ```
+
+**Available voices (13):** alloy, ash, ballad, coral, echo, fable, nova, onyx, sage, shimmer, verse, marin, cedar
 
 ### Realtime Voice API
 

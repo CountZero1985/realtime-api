@@ -464,8 +464,9 @@ Configuration for TTS settings. Extends `BaseConfig`.
 | Field | Type | Default | Valid Values | Description |
 |-------|------|---------|--------------|-------------|
 | `model` | `str` | `"gpt-4o-mini-tts"` | `"gpt-4o-mini-tts"`, `"tts-1"`, `"tts-1-hd"` | TTS model |
-| `voice` | `str` | `"ash"` | `"ash"`, `"sage"`, `"alloy"`, `"echo"`, `"shimmer"` | Voice to use |
-| `speed` | `float` | `4.0` | 0.25-4.0 | Speech speed multiplier |
+| `voice` | `str` | `"ash"` | See [supported voices](#openaitts-provider-ttsapi) | Voice to use (13 voices available) |
+| `speed` | `float` | `1.0` | 0.25-4.0 | Speech speed multiplier (1.0 = normal speed) |
+| `instructions` | `Optional[str]` | `None` | Any string | Voice steering instructions (gpt-4o-mini-tts only) |
 | `output_format` | `str` | `"pcm"` | `"pcm"`, `"mp3"`, `"opus"`, `"aac"`, `"flac"` | Output audio format |
 | `sample_rate` | `int` | `24000` | > 0 | Sample rate (PCM format only) |
 
@@ -476,7 +477,7 @@ Plus all fields from `BaseConfig` (`api_key`, `timeout`, `audio_format`).
 ```python
 from openai_apis import TTSConfig
 
-# Use defaults (gpt-4o-mini-tts, ash voice, 4.0x speed, PCM)
+# Use defaults (gpt-4o-mini-tts, ash voice, 1.0x speed, PCM)
 config = TTSConfig()
 
 # Custom voice and speed
@@ -484,6 +485,13 @@ config = TTSConfig(
     voice="sage",
     speed=1.5,
     output_format="mp3"
+)
+
+# Instruction-based voice steering (gpt-4o-mini-tts only)
+config = TTSConfig(
+    model="gpt-4o-mini-tts",
+    voice="ash",
+    instructions="Speak in a warm, friendly tone with slight excitement"
 )
 
 # High quality TTS
@@ -631,7 +639,7 @@ OpenAITTSProvider(config: Optional[TTSConfig] = None)
 
 List of voices supported by OpenAI TTS.
 
-- **Returns:** `["ash", "sage", "alloy", "echo", "shimmer"]`
+- **Returns:** `["alloy", "ash", "ballad", "coral", "echo", "fable", "nova", "onyx", "sage", "shimmer", "verse", "marin", "cedar"]` (13 voices)
 
 **`provider_name` (property) -> str**
 
@@ -641,7 +649,7 @@ Provider identifier.
 
 #### Async Methods
 
-**`synthesize(text, voice=None, speed=None) -> np.ndarray`**
+**`synthesize(text, voice=None, speed=None, instructions=None) -> np.ndarray`**
 
 Synthesize text to speech as numpy array.
 
@@ -649,10 +657,11 @@ Synthesize text to speech as numpy array.
   - `text` (`str`): Text to synthesize
   - `voice` (`Optional[str]`): Voice override
   - `speed` (`Optional[float]`): Speed override
+  - `instructions` (`Optional[str]`): Voice steering instructions (gpt-4o-mini-tts only)
 - **Returns:** `np.ndarray` - Audio data (int16, mono, 24kHz for PCM)
-- **Raises:** `ValueError` if text is empty
+- **Raises:** `ValueError` if text is empty, `TTSSynthesisError` on API errors
 
-**`synthesize_to_file(text, file_path, voice=None, speed=None) -> Path`**
+**`synthesize_to_file(text, file_path, voice=None, speed=None, instructions=None) -> Path`**
 
 Synthesize text and save to file.
 
@@ -661,19 +670,21 @@ Synthesize text and save to file.
   - `file_path` (`Union[str, Path]`): Output file path
   - `voice` (`Optional[str]`): Voice override
   - `speed` (`Optional[float]`): Speed override
+  - `instructions` (`Optional[str]`): Voice steering instructions (gpt-4o-mini-tts only)
 - **Returns:** `Path` - Path to the saved audio file
-- **Raises:** `ValueError` if text is empty
+- **Raises:** `ValueError` if text is empty, `TTSSynthesisError` on API errors
 
-**`synthesize_stream(text, voice=None, speed=None) -> AsyncIterator[bytes]`**
+**`synthesize_stream(text, voice=None, speed=None, instructions=None) -> AsyncIterator[bytes]`**
 
-Synthesize text with streaming audio chunks.
+Synthesize text with streaming audio chunks. Includes comprehensive audit logging (start, complete, error events).
 
 - **Parameters:**
   - `text` (`str`): Text to synthesize
   - `voice` (`Optional[str]`): Voice override
   - `speed` (`Optional[float]`): Speed override
+  - `instructions` (`Optional[str]`): Voice steering instructions (gpt-4o-mini-tts only)
 - **Yields:** `bytes` - Audio chunks
-- **Raises:** `ValueError` if text is empty
+- **Raises:** `ValueError` if text is empty, `TTSSynthesisError` on API errors
 
 **`synthesize_batch(texts, voice=None, speed=None) -> list[np.ndarray]`**
 
@@ -761,6 +772,44 @@ audio_arrays = await api.synthesize_batch(texts)
 for i, audio in enumerate(audio_arrays):
     print(f"Text {i+1}: {len(audio)} samples")
 ```
+
+**Instruction-based voice steering (gpt-4o-mini-tts only):**
+
+```python
+from openai_apis import TTSAPI, TTSConfig
+
+# Configure with instructions
+config = TTSConfig(
+    model="gpt-4o-mini-tts",
+    voice="ash",
+    instructions="Speak in a warm, friendly tone with slight excitement"
+)
+api = TTSAPI(config)
+
+# Instructions from config are used automatically
+audio = await api.synthesize("Hello! How can I help you today?")
+
+# Or override per-call
+audio = await api.synthesize(
+    "This is urgent!",
+    instructions="Speak quickly with urgency"
+)
+```
+
+**Error handling:**
+
+```python
+from openai_apis import TTSAPI, TTSSynthesisError
+
+api = TTSAPI()
+
+try:
+    audio = await api.synthesize("Hello world!")
+except TTSSynthesisError as e:
+    print(f"TTS synthesis failed: {e}")
+```
+
+The `TTSSynthesisError` exception is raised when the TTS API encounters errors during synthesis, including API failures, network issues, or processing errors. All OpenAI TTS methods (`synthesize`, `synthesize_stream`, `synthesize_to_file`) can raise this exception.
 
 ---
 
@@ -1518,6 +1567,7 @@ from openai_apis.tts import (
     TTSConfig,
     OpenAITTSProvider,
     BaseTTSProvider,
+    TTSSynthesisError,       # exception for TTS errors
     synthesize_text,         # async convenience function
     synthesize_to_file,      # async convenience function
     synthesize_text_sync,    # sync convenience function
@@ -1569,7 +1619,7 @@ from openai_apis import (
     TranscriptionAPI, TranscriptionConfig,
 
     # TTS
-    TTSAPI, TTSConfig, OpenAITTSProvider, BaseTTSProvider,
+    TTSAPI, TTSConfig, OpenAITTSProvider, BaseTTSProvider, TTSSynthesisError,
 
     # Realtime
     RealtimeVoiceAPI, RealtimeConfig, RealtimeAgentState,

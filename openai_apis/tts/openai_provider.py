@@ -7,11 +7,13 @@ using OpenAI's TTS models. No conversation history or state management.
 
 Features:
 - Stateless text-to-speech synthesis
-- Multiple voice options (ash, sage, alloy, echo, shimmer)
+- 13 voice options (alloy, ash, ballad, coral, echo, fable, nova, onyx, sage, shimmer, verse, marin, cedar)
 - Speed control (0.25 - 4.0)
+- Instruction-based voice steering (gpt-4o-mini-tts only)
 - Multiple output formats (numpy array, file, streaming)
 - Async and sync interfaces
-- Clean error handling
+- Comprehensive audit logging for streaming
+- Clean error handling with TTSSynthesisError
 
 Requirements:
 - Requires numpy for audio processing (install with: pip install openai-apis[audio])
