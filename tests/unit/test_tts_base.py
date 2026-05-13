@@ -114,11 +114,13 @@ class TestOpenAITTSProviderProperties:
             api = OpenAITTSProvider()
             voices = api.supported_voices
             assert isinstance(voices, list)
-            assert "ash" in voices
-            assert "sage" in voices
-            assert "alloy" in voices
-            assert "echo" in voices
-            assert "shimmer" in voices
+            assert len(voices) == 13  # Verify 13 voices
+            # Check all 13 voices are present
+            expected_voices = ["alloy", "ash", "ballad", "coral", "echo",
+                               "fable", "nova", "onyx", "sage", "shimmer",
+                               "verse", "marin", "cedar"]
+            for voice in expected_voices:
+                assert voice in voices
 
     def test_is_instance_of_base(self):
         with patch.dict("os.environ", {"OPENAI_API_KEY": "test-key"}):
