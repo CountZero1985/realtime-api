@@ -226,7 +226,9 @@ class OpenAITTSProvider(BaseTTSProvider):
         text: str,
         voice: Optional[str] = None,
         speed: Optional[float] = None,
-        instructions: Optional[str] = None
+        instructions: Optional[str] = None,
+        chunk_size: Optional[int] = None,
+        backpressure_event: Optional[asyncio.Event] = None,
     ) -> AsyncIterator[bytes]:
         """
         Synthesize text to speech with streaming (async).
@@ -236,6 +238,12 @@ class OpenAITTSProvider(BaseTTSProvider):
             voice: Optional voice (overrides config).
             speed: Optional speed (overrides config).
             instructions: Optional instruction-based voice steering (overrides config).
+            chunk_size: Optional chunk size override (bytes). If None, uses config default.
+                API response bytes are buffered and yielded in uniform chunks of this size.
+            backpressure_event: Optional asyncio.Event for backpressure control.
+                When provided, the generator awaits this event before yielding each chunk.
+                Consumer should set() the event to allow streaming, and clear() to pause.
+                The event must be set initially, or the generator will block.
 
         Yields:
             Audio chunks as bytes.
@@ -250,6 +258,7 @@ class OpenAITTSProvider(BaseTTSProvider):
         # Prepare parameters
         voice_param = voice or self.config.voice
         speed_param = speed or self.config.speed
+        effective_chunk_size = chunk_size or self.config.chunk_size
 
         # Validate parameters
         self._validate_voice(voice_param)
@@ -260,16 +269,17 @@ class OpenAITTSProvider(BaseTTSProvider):
 
         self.logger.info(
             f"Streaming synthesis: {len(text)} chars",
-            extra={"extra_data": {"text_length": len(text), "voice": voice_param, "model": self.config.model}}
+            extra={"extra_data": {"text_length": len(text), "voice": voice_param, "model": self.config.model, "chunk_size": effective_chunk_size}}
         )
 
         log_audit_event(
             event_type="tts",
             action="stream_synthesis_started",
-            details={"text_length": len(text), "voice": voice_param, "speed": speed_param, "model": self.config.model}
+            details={"text_length": len(text), "voice": voice_param, "speed": speed_param, "model": self.config.model, "chunk_size": effective_chunk_size}
         )
 
         total_bytes = 0
+        chunk_count = 0
         try:
             # Build API call kwargs
             api_kwargs = {
@@ -285,16 +295,43 @@ class OpenAITTSProvider(BaseTTSProvider):
             if instr and self.config.model == "gpt-4o-mini-tts":
                 api_kwargs["instructions"] = instr
 
+            # Buffer for re-chunking API response to uniform chunk sizes
+            buffer = bytearray()
+
             async with self.client.audio.speech.with_streaming_response.create(**api_kwargs) as response:
-                async for chunk in response.iter_bytes():
-                    total_bytes += len(chunk)
-                    yield chunk
+                async for raw_chunk in response.iter_bytes():
+                    buffer.extend(raw_chunk)
+
+                    # Yield chunks of exactly effective_chunk_size (except final chunk)
+                    while len(buffer) >= effective_chunk_size:
+                        out_chunk = bytes(buffer[:effective_chunk_size])
+                        del buffer[:effective_chunk_size]
+                        total_bytes += len(out_chunk)
+                        chunk_count += 1
+
+                        # Apply backpressure if event provided
+                        if backpressure_event is not None:
+                            await backpressure_event.wait()
+
+                        yield out_chunk
+
+                # Yield remaining bytes in buffer (final partial chunk)
+                if buffer:
+                    final_chunk = bytes(buffer)
+                    total_bytes += len(final_chunk)
+                    chunk_count += 1
+
+                    # Apply backpressure if event provided
+                    if backpressure_event is not None:
+                        await backpressure_event.wait()
+
+                    yield final_chunk
 
             duration_ms = (time.time() - start_time) * 1000
             log_audit_event(
                 event_type="tts",
                 action="stream_synthesis_completed",
-                details={"text_length": len(text), "total_bytes": total_bytes, "duration_ms": duration_ms},
+                details={"text_length": len(text), "total_bytes": total_bytes, "chunk_count": chunk_count, "chunk_size": effective_chunk_size, "duration_ms": duration_ms},
                 status="success"
             )
         except Exception as e:
