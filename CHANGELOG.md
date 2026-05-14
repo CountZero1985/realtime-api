@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Transcription Module Enhanced Test Coverage** - Expanded unit test suite to achieve 90%+ coverage for all transcription module files (issue #23):
+  - **TranscriptionAPI tests**: Added 11 new test methods covering numpy-not-installed ImportError guards, language=None and prompt=None parameter handling, string path inputs, JSON response edge cases, temp file cleanup on errors, config validation (timeout, audio_format, api_key from env), and package-level import verification
+  - **TranscriptionSession WebSocket tests**: Added 24 new test methods covering `_handle_message()` event routing (session.created, session.updated, buffer.committed, invalid JSON, exception handling), `_receive_loop()` exception handlers (ConnectionClosed triggering reconnect, generic exceptions, CancelledError), full `_reconnect()` flow (success on first attempt, all attempts failing, partial failures, audit logging), `_disconnect()` edge cases (None task/websocket), `_connect()` non-matching messages, send_audio edge cases (empty chunks, multiple chunks), session.update payload verification (language, model, turn_detection), and class constants validation
+  - **Coverage results**: `config.py` 100%, `session.py` 90%, `ws_session.py` 99%, aggregate transcription module 93%+
+  - **Total test count**: 116 passing tests across 2 test files (`test_transcription.py` with 54 tests, `test_transcription_session.py` with 59 tests)
+  - All tests use mocked OpenAI API calls and WebSocket connections (no real network requests)
+
+### Added
+
 - **Delta Event Streaming with Typed Callbacks** - Implemented streaming transcript events for Realtime API (issue #20):
   - **Typed event objects**: New `TranscriptDelta`, `TranscriptCompleted`, and `ErrorEvent` dataclasses in `openai_apis/realtime/events.py`
   - **`TranscriptDelta`**: Partial transcription events (~200-500ms intervals) with `item_id`, `delta` text, and `accumulated` full text
