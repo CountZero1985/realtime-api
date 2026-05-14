@@ -53,6 +53,7 @@ from dataclasses import asdict
 from dotenv import load_dotenv
 from openai_apis._logging import get_logger, set_correlation_id, log_audit_event, log_performance
 from openai_apis.realtime.config import RealtimeConfig
+from openai_apis.realtime.events import TranscriptDelta, TranscriptCompleted, ErrorEvent
 
 
 class RealtimeAgentState:
@@ -157,6 +158,12 @@ class RealtimeVoiceAPI:
         self._speaker_stream: Optional[sd.OutputStream] = None
         self._audio_chunk_counter = 0
 
+        # Delta accumulator: maps item_id -> {"accumulated": str, "start_time": float}
+        self._delta_accumulator: Dict[str, Dict[str, Any]] = {}
+
+        # Typed event callbacks: maps event_name -> list of callbacks
+        self._event_callbacks: Dict[str, list[Callable]] = {}
+
         # Output device (None = default)
         self._output_device: Optional[int] = None
 
@@ -176,6 +183,55 @@ class RealtimeVoiceAPI:
     def set_output_device(self, device_index: int) -> None:
         """Set the audio output device by index."""
         self._output_device = device_index
+
+    def _accumulate_delta(self, item_id: str, delta: str) -> str:
+        """Accumulate delta text for an item_id. Returns the accumulated text."""
+        if item_id not in self._delta_accumulator:
+            self._delta_accumulator[item_id] = {
+                "accumulated": "",
+                "start_time": time.time(),
+            }
+        self._delta_accumulator[item_id]["accumulated"] += delta
+        return self._delta_accumulator[item_id]["accumulated"]
+
+    def _complete_accumulation(self, item_id: str) -> float:
+        """Complete accumulation for an item_id. Returns duration_ms since first delta."""
+        entry = self._delta_accumulator.pop(item_id, None)
+        if entry is None:
+            return 0.0
+        return (time.time() - entry["start_time"]) * 1000
+
+    def _emit_event(self, event_name: str, event_data: Any) -> None:
+        """Emit a typed event, calling all registered callbacks.
+
+        Callbacks are invoked synchronously in the WebSocket message handler thread.
+        Each callback is wrapped in try/except to prevent one failing callback
+        from blocking others.
+        """
+        for cb in self._event_callbacks.get(event_name, []):
+            try:
+                cb(event_data)
+            except Exception as e:
+                self.logger.warning(
+                    f"Callback error for event '{event_name}': {e}",
+                    exc_info=True,
+                )
+
+    def on(self, event: str, callback: Callable) -> None:
+        """Register a callback for a typed event.
+
+        Supported events:
+            - "transcript.delta": Receives TranscriptDelta
+            - "transcript.completed": Receives TranscriptCompleted
+            - "error": Receives ErrorEvent
+
+        Args:
+            event: Event name string.
+            callback: Callable that receives the typed event object.
+        """
+        if event not in self._event_callbacks:
+            self._event_callbacks[event] = []
+        self._event_callbacks[event].append(callback)
 
     def _check_realtime_deps(self) -> None:
         """Check if required realtime dependencies are installed."""
@@ -276,6 +332,30 @@ class RealtimeVoiceAPI:
             threading.Thread(target=self._mic_loop, args=(ws,), daemon=True).start()
 
         # Transcription events
+        elif event_type == "conversation.item.input_audio_transcription.delta":
+            item_id = event.get("item_id", "")
+            delta_text = event.get("delta", "")
+            accumulated = self._accumulate_delta(item_id, delta_text)
+
+            delta_event = TranscriptDelta(
+                item_id=item_id,
+                delta=delta_text,
+                accumulated=accumulated,
+            )
+
+            log_audit_event(
+                event_type="transcript.delta",
+                action="transcript_delta_received",
+                session_id=self._session_id,
+                details={
+                    "item_id": item_id,
+                    "delta_length": len(delta_text),
+                    "accumulated_length": len(accumulated),
+                },
+            )
+
+            self._emit_event("transcript.delta", delta_event)
+
         elif event_type == "conversation.item.input_audio_transcription.completed":
             transcript = event.get("transcript", "")
             print(f"[TRANSCRIPTION] {transcript}")
@@ -294,6 +374,27 @@ class RealtimeVoiceAPI:
 
             if self._on_transcription:
                 self._on_transcription(transcript)
+
+            item_id = event.get("item_id", "")
+            duration_ms = self._complete_accumulation(item_id)
+            completed_event = TranscriptCompleted(
+                item_id=item_id,
+                transcript=transcript,
+                duration_ms=duration_ms,
+            )
+
+            log_audit_event(
+                event_type="transcript.completed",
+                action="transcription_completed",
+                session_id=self._session_id,
+                details={
+                    "item_id": item_id,
+                    "transcript_length": len(transcript),
+                    "duration_ms": duration_ms,
+                },
+            )
+
+            self._emit_event("transcript.completed", completed_event)
 
         # Audio response events
         elif event_type == "response.audio.delta":
@@ -318,11 +419,56 @@ class RealtimeVoiceAPI:
             self._audio_chunk_counter = 0
 
         # Text transcript events
+        elif event_type == "response.audio_transcript.delta":
+            item_id = event.get("item_id", "")
+            delta_text = event.get("delta", "")
+            accumulated = self._accumulate_delta(item_id, delta_text)
+
+            delta_event = TranscriptDelta(
+                item_id=item_id,
+                delta=delta_text,
+                accumulated=accumulated,
+            )
+
+            log_audit_event(
+                event_type="transcript.delta",
+                action="response_transcript_delta_received",
+                session_id=self._session_id,
+                details={
+                    "item_id": item_id,
+                    "delta_length": len(delta_text),
+                    "accumulated_length": len(accumulated),
+                },
+            )
+
+            self._emit_event("transcript.delta", delta_event)
+
         elif event_type == "response.audio_transcript.done":
             transcript = event.get("transcript", "")
             print(f"[TRANSCRIPT] {transcript}")
             if self._on_response_text:
                 self._on_response_text(transcript)
+
+            item_id = event.get("item_id", "")
+            duration_ms = self._complete_accumulation(item_id)
+            completed_event = TranscriptCompleted(
+                item_id=item_id,
+                transcript=transcript,
+                duration_ms=duration_ms,
+            )
+
+            log_audit_event(
+                event_type="transcript.completed",
+                action="response_transcript_completed",
+                session_id=self._session_id,
+                details={
+                    "item_id": item_id,
+                    "transcript_length": len(transcript),
+                    "duration_ms": duration_ms,
+                },
+            )
+
+            self._emit_event("transcript.completed", completed_event)
 
         # Error events
         elif event_type == "error":
@@ -344,6 +490,12 @@ class RealtimeVoiceAPI:
 
             if self._on_error:
                 self._on_error(error_msg)
+
+            error_event = ErrorEvent(
+                code=event.get("code", "unknown"),
+                message=error_msg,
+            )
+            self._emit_event("error", error_event)
 
         # Other events (logging only)
         elif event_type == "conversation.created":
