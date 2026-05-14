@@ -303,33 +303,72 @@ Configuration for transcription settings. Extends `BaseConfig`.
 
 | Field | Type | Default | Valid Values | Description |
 |-------|------|---------|--------------|-------------|
-| `model` | `str` | `"gpt-4o-mini-transcribe"` | `"gpt-4o-mini-transcribe"`, `"whisper-1"` | Model to use for transcription |
-| `language` | `Optional[str]` | `"hu"` | ISO-639-1 code or `None` | Language code (None for auto-detect) |
-| `expected_sample_rate` | `int` | `24000` | > 0 | Expected sample rate for validation |
-| `expected_channels` | `int` | `1` | > 0 | Expected channels for validation |
-| `response_format` | `str` | `"text"` | `"text"`, `"json"`, `"verbose_json"`, `"srt"`, `"vtt"` | Response format |
-| `temperature` | `float` | `0.0` | 0.0-1.0 | Sampling temperature (lower = more deterministic) |
-| `prompt` | `Optional[str]` | `None` | Any string | Context to guide transcription |
+| `model` | `str` | `"gpt-realtime-whisper"` | See SUPPORTED_TRANSCRIPTION_MODELS | Model to use for transcription |
+| `language` | `Optional[str]` | `"hu"` | ISO 639-1 code or `None` | Language code (None for auto-detect) |
+| `vad` | `VADConfig` | `VADConfig()` | Valid VADConfig instance | Voice Activity Detection configuration |
+| `keywords` | `list[str]` | `[]` | Any list of strings | Keywords to steer transcription accuracy |
+| `prompt` | `Optional[str]` | `None` | Any string | Context prompt to guide transcription |
+| `include_logprobs` | `bool` | `False` | `True`, `False` | Whether to request log probabilities from API |
 
 Plus all fields from `BaseConfig` (`api_key`, `timeout`, `audio_format`).
+
+**Supported Models (SUPPORTED_TRANSCRIPTION_MODELS):**
+- `"gpt-realtime-whisper"` (default)
+- `"gpt-4o-mini-transcribe"`
+- `"gpt-4o-transcribe"`
+- `"whisper-1"`
+
+**Supported Languages (SUPPORTED_LANGUAGES):**
+100+ ISO 639-1 language codes including: af, am, ar, as, az, ba, be, bg, bn, bo, br, bs, ca, cs, cy, da, de, el, en, es, et, eu, fa, fi, fo, fr, gl, gu, ha, haw, he, hi, hr, ht, hu, hy, id, is, it, ja, jw, ka, kk, km, kn, ko, la, lb, ln, lo, lt, lv, mg, mi, mk, ml, mn, mr, ms, mt, my, ne, nl, nn, no, oc, pa, pl, ps, pt, ro, ru, sa, sd, si, sk, sl, sn, so, sq, sr, su, sv, sw, ta, te, tg, th, tk, tl, tr, tt, uk, ur, uz, vi, yi, yo, yue, zh.
+
+#### Validation
+
+- `model` must be in `SUPPORTED_TRANSCRIPTION_MODELS`
+- `language` must be a valid ISO 639-1 code or `None` (for auto-detect)
+- `vad` must be a valid `VADConfig` instance
+- All `BaseConfig` validations apply (timeout > 0, api_key loaded from env)
+
+Raises `ValueError` if any validation fails.
 
 #### Usage
 
 ```python
-from openai_apis import TranscriptionConfig
+from openai_apis import TranscriptionConfig, VADConfig
 
-# Use defaults (gpt-4o-mini-transcribe, Hungarian, 24kHz mono)
+# Use defaults (gpt-realtime-whisper, Hungarian, 24kHz mono)
 config = TranscriptionConfig()
 
 # Custom model and language
 config = TranscriptionConfig(
     model="whisper-1",
-    language="en",
-    temperature=0.2
+    language="en"
 )
 
 # Auto-detect language
 config = TranscriptionConfig(language=None)
+
+# With VAD configuration
+vad = VADConfig(mode="semantic_vad", eagerness="high")
+config = TranscriptionConfig(vad=vad)
+
+# With keywords for better accuracy on domain-specific terms
+config = TranscriptionConfig(
+    keywords=["OpenAI", "Budapest", "Python"],
+    prompt="Technical discussion about AI"
+)
+
+# Request log probabilities
+config = TranscriptionConfig(include_logprobs=True)
+
+# All features combined
+config = TranscriptionConfig(
+    model="gpt-4o-mini-transcribe",
+    language="en",
+    vad=VADConfig(mode="server_vad", threshold=0.7),
+    keywords=["machine learning", "neural networks"],
+    prompt="AI research discussion",
+    include_logprobs=True
+)
 ```
 
 ---
@@ -439,7 +478,7 @@ print(transcript)
 config = TranscriptionConfig(
     model="whisper-1",
     language="en",
-    temperature=0.2
+    keywords=["technical", "API"]
 )
 api = TranscriptionAPI(config)
 
@@ -497,6 +536,18 @@ Commit audio buffer to trigger transcription (push-to-talk mode).
 
 - **Raises:** `InvalidStateTransition` if session is not in CONNECTED state
 - **Audit Event:** `audio.buffer_committed`
+
+**`async update_vad(vad_config: VADConfig) -> None`**
+
+Update Voice Activity Detection configuration at runtime.
+
+Sends a `session.update` event with new turn_detection configuration. Can be called while the session is connected to switch between VAD modes (server_vad, semantic_vad, disabled).
+
+- **Parameters:**
+  - `vad_config` (`VADConfig`): New VAD configuration to apply
+- **Raises:** `InvalidStateTransition` if session is not in CONNECTED state
+- **Audit Event:** `vad.updated` with `{"mode": <vad_mode>}`
+- **Side Effects:** Updates internal `_config.vad_config` to preserve setting across reconnections
 
 **`on(event: str, callback: Callable) -> None`**
 
@@ -601,6 +652,30 @@ async with TranscriptionSession(
     # Send audio and commit
     await session.send_audio(audio_data)
     await session.commit_audio()
+```
+
+**VAD configuration and runtime switching:**
+
+```python
+from openai_apis import TranscriptionSession, TranscriptionConfig, VADConfig
+
+# Start with server-side VAD
+vad = VADConfig(mode="server_vad", threshold=0.6, silence_duration_ms=600)
+config = TranscriptionConfig(vad_config=vad)
+
+async with TranscriptionSession(config) as session:
+    # Stream audio with automatic turn detection
+    await session.send_audio(audio_chunk)
+    # No need to call commit_audio() - VAD handles turn detection
+
+    # Switch to semantic VAD at runtime
+    new_vad = VADConfig(mode="semantic_vad", eagerness="high")
+    await session.update_vad(new_vad)
+
+    # Switch to push-to-talk mode (disable VAD)
+    await session.update_vad(VADConfig(mode="disabled"))
+    await session.send_audio(audio_chunk)
+    await session.commit_audio()  # Manual commit required when VAD disabled
 ```
 
 **Access audit trail:**
@@ -1304,6 +1379,7 @@ Configuration for Realtime API sessions. Extends `BaseConfig`.
 | `speed` | `float` | `1.1` | Speech speed (0.25-4.0) |
 | `transcription_model` | `str` | `"gpt-4o-mini-transcribe"` | Model for transcription |
 | `language` | `str` | `"hu"` | Language code (ISO-639-1) |
+| `keywords` | `Optional[List[str]]` | `None` | Domain-specific keywords for transcription steering |
 | `sample_rate` | `int` | `24000` | Audio sample rate in Hz |
 | `chunk_duration_s` | `float` | `0.5` | Audio chunk duration in seconds |
 | `channels` | `int` | `1` | Audio channels (1 = mono) |
@@ -1330,8 +1406,37 @@ config = RealtimeConfig(
     temperature=0.7
 )
 
+# Hungarian with domain-specific keywords for better transcription
+config = RealtimeConfig(
+    language="hu",
+    keywords=["OpenAI", "WebSocket", "transzkripció", "API"]
+)
+
 # Text-only mode (no audio)
 config = RealtimeConfig(modalities=["text"])
+```
+
+#### Keyword Steering
+
+The `keywords` field enables domain-specific transcription steering via the OpenAI Realtime API's `input_audio_transcription.prompt` field:
+
+- **For `whisper-1` model**: Keywords are sent as a comma-separated list (e.g., `"OpenAI, WebSocket, API"`)
+- **For `gpt-4o-transcribe` models**: Keywords are sent as a free-text hint for better domain-specific transcription
+- **Automatic propagation**: Keywords are automatically included in the `session.update` WebSocket event when the session is configured
+- **Smart omission**: The `prompt` field is only included when `keywords` is non-empty (omitted for `None` or empty list `[]`)
+
+**Example:**
+```python
+config = RealtimeConfig(
+    language="hu",
+    keywords=["mesterséges intelligencia", "neurális hálózat", "gépi tanulás"]
+)
+# Results in session.update event with:
+# "input_audio_transcription": {
+#     "model": "gpt-4o-mini-transcribe",
+#     "language": "hu",
+#     "prompt": "mesterséges intelligencia, neurális hálózat, gépi tanulás"
+# }
 ```
 
 ---

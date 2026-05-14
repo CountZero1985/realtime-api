@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **TranscriptionConfig modernization** - Updated `TranscriptionConfig` with new fields and validation (issue #19):
+  - **Default model change**: Changed default `model` from `"gpt-4o-mini-transcribe"` to `"gpt-realtime-whisper"`
+  - **New fields**: Added `vad` (VADConfig), `keywords` (list[str]), and `include_logprobs` (bool)
+  - **Removed fields**: Removed `expected_sample_rate`, `expected_channels`, `response_format`, and `temperature` (audio format now handled by `BaseConfig.audio_format`)
+  - **Model validation**: Added `__post_init__` validation for supported transcription models (gpt-realtime-whisper, gpt-4o-mini-transcribe, gpt-4o-transcribe, whisper-1)
+  - **Language validation**: Added ISO 639-1 language code validation with support for 100+ languages
+  - **VAD integration**: Transcription sessions now support Voice Activity Detection via `VADConfig` field
+  - **Keyword steering**: New `keywords` field allows steering transcription accuracy for domain-specific terms
+  - **Log probabilities**: New `include_logprobs` field enables requesting log probabilities from the API
+  - Comprehensive unit tests in `tests/unit/test_transcription_config.py` with 100% coverage
+
 ### Added
 
 - **Transcription Module Enhanced Test Coverage** - Expanded unit test suite to achieve 90%+ coverage for all transcription module files (issue #23):
@@ -16,8 +29,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **Total test count**: 116 passing tests across 2 test files (`test_transcription.py` with 54 tests, `test_transcription_session.py` with 59 tests)
   - All tests use mocked OpenAI API calls and WebSocket connections (no real network requests)
 
-### Added
+- **VAD Configuration for TranscriptionSession** - Added Voice Activity Detection configuration to TranscriptionSession (issue #21):
+  - **`vad_config` field in `TranscriptionConfig`**: New optional field for VAD configuration (None = disabled/push-to-talk)
+  - **`update_vad()` method**: Runtime VAD mode switching via new `session.update_vad(vad_config)` method
+  - **Three VAD modes supported**: `server_vad` (threshold-based), `semantic_vad` (eagerness-based), `disabled` (push-to-talk)
+  - **Automatic turn_detection serialization**: Internal `_vad_config_to_turn_detection()` method converts VADConfig to OpenAI Realtime API format
+  - **Session.update event**: VAD settings sent via `session.update` WebSocket event to OpenAI API
+  - **Runtime switching**: VAD mode can be changed during active session via `update_vad()` method
+  - **State validation**: `update_vad()` requires CONNECTED state, raises `InvalidStateTransition` otherwise
+  - **Audit logging**: VAD updates logged with `vad.updated` event type and mode information
+  - **Backward compatible**: Default config (no vad_config) maintains push-to-talk behavior with `turn_detection: null`
+  - Comprehensive unit tests in `tests/unit/test_transcription_session.py::TestVADConfiguration` covering all modes, JSON serialization, and runtime switching
 
+- **Language Configuration and Keyword Steering** - Added keyword steering support to Realtime API transcription (issue #22):
+  - **`keywords` field in `RealtimeConfig`**: New optional field (`Optional[List[str]]`, default `None`) for domain-specific keyword steering
+  - **Keyword prompt propagation**: Keywords are sent via `input_audio_transcription.prompt` field in `session.update` WebSocket event
+  - **Flexible keyword format**: Keywords joined with `", "` for OpenAI API (comma-separated list for `whisper-1`, free-text hint for `gpt-4o-transcribe`-series)
+  - **Enhanced audit logging**: Both `language` and `keywords` now logged in `realtime_init` and `session_configured` audit events
+  - **Comprehensive testing**: Unit tests for keyword configuration, session update event propagation, and audit logging
+  - **Multi-language support**: Existing `language` field (default `"hu"`) now properly documented and tested with multiple languages (en, de, fr)
+  - **Smart field omission**: `prompt` field only included in session update when keywords are non-empty (omitted for `None` or empty list)
+  - New unit tests in `tests/unit/test_realtime_session.py` covering all keyword and language scenarios
 - **Delta Event Streaming with Typed Callbacks** - Implemented streaming transcript events for Realtime API (issue #20):
   - **Typed event objects**: New `TranscriptDelta`, `TranscriptCompleted`, and `ErrorEvent` dataclasses in `openai_apis/realtime/events.py`
   - **`TranscriptDelta`**: Partial transcription events (~200-500ms intervals) with `item_id`, `delta` text, and `accumulated` full text

@@ -10,7 +10,7 @@ import json
 from typing import Optional
 import websockets
 from openai_apis._session import BaseSession, InvalidStateTransition, SessionState
-from openai_apis._config import BaseConfig
+from openai_apis._config import BaseConfig, VADConfig
 from openai_apis._logging import get_logger, set_correlation_id, log_audit_event
 from openai_apis.transcription.config import TranscriptionConfig
 
@@ -63,6 +63,36 @@ class TranscriptionSession(BaseSession):
         self._receive_task: Optional[asyncio.Task] = None
         self._max_reconnect_attempts = max_reconnect_attempts
         self._reconnect_delay = reconnect_delay
+
+    @staticmethod
+    def _vad_config_to_turn_detection(vad_config: Optional[VADConfig]) -> Optional[dict]:
+        """Convert VADConfig to OpenAI Realtime API turn_detection format.
+
+        Args:
+            vad_config: VADConfig instance, or None.
+
+        Returns:
+            None if vad_config is None or mode is "disabled".
+            Dict with turn_detection config for server_vad or semantic_vad.
+        """
+        if vad_config is None or vad_config.mode == "disabled":
+            return None
+
+        if vad_config.mode == "server_vad":
+            return {
+                "type": "server_vad",
+                "threshold": vad_config.threshold,
+                "prefix_padding_ms": vad_config.prefix_padding_ms,
+                "silence_duration_ms": vad_config.silence_duration_ms,
+            }
+
+        if vad_config.mode == "semantic_vad":
+            return {
+                "type": "semantic_vad",
+                "eagerness": vad_config.eagerness,
+            }
+
+        return None
 
     async def _connect(self) -> None:
         """Establish WebSocket connection and start receive loop.
@@ -190,6 +220,40 @@ class TranscriptionSession(BaseSession):
         self._audit_log.log("audio.buffer_committed", {})
         self._logger.debug("Audio buffer committed")
 
+    async def update_vad(self, vad_config: VADConfig) -> None:
+        """Update VAD configuration at runtime.
+
+        Sends a session.update event with the new turn_detection configuration.
+        Can be called while the session is connected to switch between VAD modes.
+
+        Args:
+            vad_config: New VAD configuration to apply.
+
+        Raises:
+            InvalidStateTransition: If session is not in CONNECTED state.
+        """
+        if self._state != SessionState.CONNECTED:
+            raise InvalidStateTransition(
+                f"Cannot update VAD in state {self._state.value}, must be CONNECTED"
+            )
+
+        turn_detection = self._vad_config_to_turn_detection(vad_config)
+
+        event = {
+            "type": "session.update",
+            "session": {
+                "turn_detection": turn_detection,
+            },
+        }
+
+        await self._send_event(event)
+        self._config.vad_config = vad_config
+
+        self._audit_log.log("vad.updated", {
+            "mode": vad_config.mode,
+        })
+        self._logger.debug(f"VAD updated to mode={vad_config.mode}")
+
     async def _send_event(self, event: dict) -> None:
         """Send a JSON event over the WebSocket.
 
@@ -295,13 +359,15 @@ class TranscriptionSession(BaseSession):
     async def _send_session_update(self) -> None:
         """Send session.update event with transcription configuration.
 
-        Configures the session for transcription-only mode with push-to-talk
-        and the specified language and model settings.
+        Configures the session for transcription-only mode with VAD settings
+        (or push-to-talk if VAD is disabled) and the specified language and model settings.
         """
         # Map model - Realtime API only supports whisper-1 for transcription
         transcription_model = (
             "whisper-1" if self._config.model == "whisper-1" else "whisper-1"
         )
+
+        turn_detection = self._vad_config_to_turn_detection(self._config.vad_config)
 
         event = {
             "type": "session.update",
@@ -312,13 +378,15 @@ class TranscriptionSession(BaseSession):
                     "language": self._config.language,
                 },
                 "input_audio_format": "pcm16",
-                "turn_detection": None,  # Push-to-talk (manual commit)
+                "turn_detection": turn_detection,
             },
         }
 
         await self._send_event(event)
         self._logger.debug(
-            f"Sent session.update with model={transcription_model}, language={self._config.language}"
+            f"Sent session.update with model={transcription_model}, "
+            f"language={self._config.language}, "
+            f"turn_detection={turn_detection}"
         )
 
     async def _reconnect(self) -> None:

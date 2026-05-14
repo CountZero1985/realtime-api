@@ -60,9 +60,14 @@ examples/               # Standalone example applications
 
 ### Transcription API (`openai_apis/transcription/`)
 - **`TranscriptionAPI`**: Stateless speech-to-text using OpenAI Whisper
-- **`TranscriptionConfig`**: Configuration for transcription (model, language, sample rate)
+- **`TranscriptionConfig`**: Configuration for transcription with validation
+  - Model: gpt-realtime-whisper (default), gpt-4o-mini-transcribe, gpt-4o-transcribe, whisper-1
+  - Language: ISO 639-1 language codes (100+ supported) or None for auto-detect
+  - VAD: Voice Activity Detection via `VADConfig` field
+  - Keywords: List of terms to steer transcription accuracy
+  - Prompt: Context to guide transcription
+  - Log probabilities: Optional boolean flag
 - Supports file and numpy array input
-- Uses gpt-4o-mini-transcribe or whisper-1
 - Async and sync interfaces
 
 ### TTS API (`openai_apis/tts/`)
@@ -88,7 +93,9 @@ examples/               # Standalone example applications
 ### Realtime Voice API (`openai_apis/realtime/`)
 - **`RealtimeVoiceAPI`**: Direct WebSocket connection to OpenAI Realtime API
 - **`RealtimeAgentState`**: State manager for realtime sessions
-- **`RealtimeConfig`**: Session configuration (model, voice, modalities)
+- **`RealtimeConfig`**: Session configuration (model, voice, modalities, language, keywords)
+  - `language` field for setting transcription language (default: "hu")
+  - `keywords` field for domain-specific transcription steering (comma-separated prompt)
 - Push-to-talk audio streaming
 - Real-time audio playback
 - Event-driven callbacks
