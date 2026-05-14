@@ -352,10 +352,10 @@ config = TranscriptionConfig(audio_format=fmt)
 
 ### Voice Activity Detection (VAD) Configuration
 
-Configure voice activity detection for realtime sessions:
+Configure voice activity detection for transcription and realtime sessions:
 
 ```python
-from openai_apis import VADConfig
+from openai_apis import VADConfig, TranscriptionConfig, TranscriptionSession
 
 # Server-side VAD (silence detection)
 vad = VADConfig(
@@ -371,8 +371,16 @@ vad = VADConfig(
     eagerness="high"  # "low", "medium", "high", or "auto"
 )
 
-# Disable VAD for continuous processing
+# Disable VAD for continuous processing (push-to-talk)
 vad = VADConfig(mode="disabled")
+
+# Use with TranscriptionConfig
+config = TranscriptionConfig(vad_config=vad)
+
+# Runtime VAD switching in TranscriptionSession
+async with TranscriptionSession(config) as session:
+    # Switch VAD mode during active session
+    await session.update_vad(VADConfig(mode="semantic_vad", eagerness="high"))
 ```
 
 ### Per-Session Audit Logging
