@@ -145,7 +145,7 @@ class TranscriptionAPI:
             audio = audio.flatten()
 
         audio_length = len(audio)
-        audio_duration = audio_length / self.config.expected_sample_rate
+        audio_duration = audio_length / self.config.audio_format.sample_rate
         lang = language or self.config.language
 
         self.logger.info(
@@ -174,9 +174,9 @@ class TranscriptionAPI:
             try:
                 # Write WAV file
                 with wave.open(temp_path, 'wb') as wav_file:
-                    wav_file.setnchannels(self.config.expected_channels)
+                    wav_file.setnchannels(self.config.audio_format.channels)
                     wav_file.setsampwidth(2)  # 16-bit = 2 bytes
-                    wav_file.setframerate(self.config.expected_sample_rate)
+                    wav_file.setframerate(self.config.audio_format.sample_rate)
                     wav_file.writeframes(audio.tobytes())
 
                 # Transcribe from file
@@ -245,8 +245,6 @@ class TranscriptionAPI:
         # Prepare parameters
         params = {
             "model": self.config.model,
-            "response_format": self.config.response_format,
-            "temperature": self.config.temperature
         }
 
         # Add optional parameters
@@ -278,15 +276,8 @@ class TranscriptionAPI:
                 duration_ms=api_duration_ms
             )
 
-            # Extract text based on response format
-            if self.config.response_format == "text":
-                result_text = transcript  # Already a string
-            elif self.config.response_format == "json":
-                result_text = transcript.get("text", "")
-            elif self.config.response_format == "verbose_json":
-                result_text = transcript.get("text", "")
-            else:
-                result_text = str(transcript)
+            # Extract text from response (always string format)
+            result_text = str(transcript) if not isinstance(transcript, str) else transcript
 
             duration_ms = (time.time() - start_time) * 1000
 

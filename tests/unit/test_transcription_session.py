@@ -61,7 +61,7 @@ class TestTranscriptionSessionInit:
         """Default TranscriptionConfig used when None."""
         session = TranscriptionSession()
         assert isinstance(session._config, TranscriptionConfig)
-        assert session._config.model == "gpt-4o-mini-transcribe"
+        assert session._config.model == "gpt-realtime-whisper"
 
     def test_custom_config(self):
         """Custom config is stored."""
