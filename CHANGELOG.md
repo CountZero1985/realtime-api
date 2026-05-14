@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **TranscriptionConfig modernization** - Updated `TranscriptionConfig` with new fields and validation (issue #19):
+  - **Default model change**: Changed default `model` from `"gpt-4o-mini-transcribe"` to `"gpt-realtime-whisper"`
+  - **New fields**: Added `vad` (VADConfig), `keywords` (list[str]), and `include_logprobs` (bool)
+  - **Removed fields**: Removed `expected_sample_rate`, `expected_channels`, `response_format`, and `temperature` (audio format now handled by `BaseConfig.audio_format`)
+  - **Model validation**: Added `__post_init__` validation for supported transcription models (gpt-realtime-whisper, gpt-4o-mini-transcribe, gpt-4o-transcribe, whisper-1)
+  - **Language validation**: Added ISO 639-1 language code validation with support for 100+ languages
+  - **VAD integration**: Transcription sessions now support Voice Activity Detection via `VADConfig` field
+  - **Keyword steering**: New `keywords` field allows steering transcription accuracy for domain-specific terms
+  - **Log probabilities**: New `include_logprobs` field enables requesting log probabilities from the API
+  - Comprehensive unit tests in `tests/unit/test_transcription_config.py` with 100% coverage
+
 ### Added
 
 - **Delta Event Streaming with Typed Callbacks** - Implemented streaming transcript events for Realtime API (issue #20):
