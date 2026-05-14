@@ -37,12 +37,10 @@ def custom_transcription_config():
     return TranscriptionConfig(
         model="whisper-1",
         language="en",
-        expected_sample_rate=16000,
-        expected_channels=1,
         timeout=60.0,
-        response_format="json",
-        temperature=0.5,
-        prompt="Custom context"
+        keywords=["test"],
+        prompt="Custom context",
+        include_logprobs=True,
     )
 
 
@@ -90,25 +88,23 @@ class TestTranscriptionConfig:
         # Clear env var to test default None behavior
         monkeypatch.delenv("OPENAI_API_KEY", raising=False)
         config = TranscriptionConfig()
-        assert config.model == "gpt-4o-mini-transcribe"
+        assert config.model == "gpt-realtime-whisper"
         assert config.language == "hu"
-        assert config.expected_sample_rate == 24000
-        assert config.expected_channels == 1
         assert config.api_key is None
         assert config.timeout == 30.0
-        assert config.response_format == "text"
-        assert config.temperature == 0.0
         assert config.prompt is None
+        assert config.keywords == []
+        assert config.include_logprobs is False
+        assert isinstance(config.vad, type(config.vad))  # Check vad exists
 
     def test_custom_config(self, custom_transcription_config):
         """Test custom configuration values."""
         assert custom_transcription_config.model == "whisper-1"
         assert custom_transcription_config.language == "en"
-        assert custom_transcription_config.expected_sample_rate == 16000
         assert custom_transcription_config.timeout == 60.0
-        assert custom_transcription_config.response_format == "json"
-        assert custom_transcription_config.temperature == 0.5
         assert custom_transcription_config.prompt == "Custom context"
+        assert custom_transcription_config.keywords == ["test"]
+        assert custom_transcription_config.include_logprobs is True
 
 
 # TranscriptionAPI Tests
@@ -272,44 +268,6 @@ class TestTranscriptionAPI:
             call_kwargs = api.client.audio.transcriptions.create.call_args[1]
             assert call_kwargs['prompt'] == "Context"
 
-    @pytest.mark.asyncio
-    async def test_transcribe_file_json_format(self, temp_wav_file):
-        """Test file transcription with JSON response format."""
-        config = TranscriptionConfig(response_format="json", api_key="test-key")
-        api = TranscriptionAPI(config=config)
-
-        mock_response = {"text": "JSON transcript"}
-        api.client.audio.transcriptions.create = AsyncMock(return_value=mock_response)
-
-        result = await api.transcribe_file(temp_wav_file)
-
-        assert result == "JSON transcript"
-
-    @pytest.mark.asyncio
-    async def test_transcribe_file_verbose_json_format(self, temp_wav_file):
-        """Test file transcription with verbose JSON format."""
-        config = TranscriptionConfig(response_format="verbose_json", api_key="test-key")
-        api = TranscriptionAPI(config=config)
-
-        mock_response = {"text": "Verbose transcript", "duration": 5.0}
-        api.client.audio.transcriptions.create = AsyncMock(return_value=mock_response)
-
-        result = await api.transcribe_file(temp_wav_file)
-
-        assert result == "Verbose transcript"
-
-    @pytest.mark.asyncio
-    async def test_transcribe_file_other_format(self, temp_wav_file):
-        """Test file transcription with other format (srt/vtt)."""
-        config = TranscriptionConfig(response_format="srt", api_key="test-key")
-        api = TranscriptionAPI(config=config)
-
-        mock_response = "1\n00:00:00,000 --> 00:00:05,000\nSubtitle text"
-        api.client.audio.transcriptions.create = AsyncMock(return_value=mock_response)
-
-        result = await api.transcribe_file(temp_wav_file)
-
-        assert result == mock_response
 
     @pytest.mark.asyncio
     async def test_transcribe_file_error(self, temp_wav_file):
@@ -442,10 +400,9 @@ class TestTranscriptionAPIIntegration:
         config = TranscriptionConfig(
             model="whisper-1",
             language="en",
-            expected_sample_rate=16000,
-            response_format="json",
-            temperature=0.3,
             prompt="Test context",
+            keywords=["test", "context"],
+            include_logprobs=True,
             api_key="test-key"
         )
 
@@ -453,7 +410,8 @@ class TestTranscriptionAPIIntegration:
 
         assert api.config.model == "whisper-1"
         assert api.config.language == "en"
-        assert api.config.temperature == 0.3
+        assert api.config.keywords == ["test", "context"]
+        assert api.config.include_logprobs is True
 
 
 # Edge Cases and Error Handling
@@ -538,16 +496,16 @@ class TestTranscriptionAPIEdgeCases:
         config = TranscriptionConfig(
             model="whisper-1",
             language="en",
-            response_format="verbose_json",
-            temperature=0.5,
             prompt="Full context",
+            keywords=["test"],
+            include_logprobs=True,
             api_key="test-key"
         )
 
         api = TranscriptionAPI(config=config)
 
         api.client.audio.transcriptions.create = AsyncMock(
-            return_value={"text": "Full param test"}
+            return_value="Full param test"
         )
 
         result = await api.transcribe(
