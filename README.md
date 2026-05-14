@@ -111,7 +111,7 @@ print(transcript)
 config = TranscriptionConfig(
     model="gpt-4o-mini-transcribe",
     language="hu",
-    temperature=0.0
+    keywords=["technical", "OpenAI"]
 )
 api = TranscriptionAPI(config=config)
 

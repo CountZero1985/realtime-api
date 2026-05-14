@@ -303,47 +303,71 @@ Configuration for transcription settings. Extends `BaseConfig`.
 
 | Field | Type | Default | Valid Values | Description |
 |-------|------|---------|--------------|-------------|
-| `model` | `str` | `"gpt-4o-mini-transcribe"` | `"gpt-4o-mini-transcribe"`, `"whisper-1"` | Model to use for transcription |
-| `language` | `Optional[str]` | `"hu"` | ISO-639-1 code or `None` | Language code (None for auto-detect) |
-| `expected_sample_rate` | `int` | `24000` | > 0 | Expected sample rate for validation |
-| `expected_channels` | `int` | `1` | > 0 | Expected channels for validation |
-| `response_format` | `str` | `"text"` | `"text"`, `"json"`, `"verbose_json"`, `"srt"`, `"vtt"` | Response format |
-| `temperature` | `float` | `0.0` | 0.0-1.0 | Sampling temperature (lower = more deterministic) |
-| `prompt` | `Optional[str]` | `None` | Any string | Context to guide transcription |
-| `vad_config` | `Optional[VADConfig]` | `None` | `VADConfig` instance or `None` | Voice Activity Detection configuration (None = disabled/push-to-talk) |
+| `model` | `str` | `"gpt-realtime-whisper"` | See SUPPORTED_TRANSCRIPTION_MODELS | Model to use for transcription |
+| `language` | `Optional[str]` | `"hu"` | ISO 639-1 code or `None` | Language code (None for auto-detect) |
+| `vad` | `VADConfig` | `VADConfig()` | Valid VADConfig instance | Voice Activity Detection configuration |
+| `keywords` | `list[str]` | `[]` | Any list of strings | Keywords to steer transcription accuracy |
+| `prompt` | `Optional[str]` | `None` | Any string | Context prompt to guide transcription |
+| `include_logprobs` | `bool` | `False` | `True`, `False` | Whether to request log probabilities from API |
 
 Plus all fields from `BaseConfig` (`api_key`, `timeout`, `audio_format`).
+
+**Supported Models (SUPPORTED_TRANSCRIPTION_MODELS):**
+- `"gpt-realtime-whisper"` (default)
+- `"gpt-4o-mini-transcribe"`
+- `"gpt-4o-transcribe"`
+- `"whisper-1"`
+
+**Supported Languages (SUPPORTED_LANGUAGES):**
+100+ ISO 639-1 language codes including: af, am, ar, as, az, ba, be, bg, bn, bo, br, bs, ca, cs, cy, da, de, el, en, es, et, eu, fa, fi, fo, fr, gl, gu, ha, haw, he, hi, hr, ht, hu, hy, id, is, it, ja, jw, ka, kk, km, kn, ko, la, lb, ln, lo, lt, lv, mg, mi, mk, ml, mn, mr, ms, mt, my, ne, nl, nn, no, oc, pa, pl, ps, pt, ro, ru, sa, sd, si, sk, sl, sn, so, sq, sr, su, sv, sw, ta, te, tg, th, tk, tl, tr, tt, uk, ur, uz, vi, yi, yo, yue, zh.
+
+#### Validation
+
+- `model` must be in `SUPPORTED_TRANSCRIPTION_MODELS`
+- `language` must be a valid ISO 639-1 code or `None` (for auto-detect)
+- `vad` must be a valid `VADConfig` instance
+- All `BaseConfig` validations apply (timeout > 0, api_key loaded from env)
+
+Raises `ValueError` if any validation fails.
 
 #### Usage
 
 ```python
 from openai_apis import TranscriptionConfig, VADConfig
 
-# Use defaults (gpt-4o-mini-transcribe, Hungarian, 24kHz mono, no VAD)
+# Use defaults (gpt-realtime-whisper, Hungarian, 24kHz mono)
 config = TranscriptionConfig()
 
 # Custom model and language
 config = TranscriptionConfig(
     model="whisper-1",
-    language="en",
-    temperature=0.2
+    language="en"
 )
 
 # Auto-detect language
 config = TranscriptionConfig(language=None)
 
-# With server-side VAD for automatic turn detection
+# With VAD configuration
+vad = VADConfig(mode="semantic_vad", eagerness="high")
+config = TranscriptionConfig(vad=vad)
+
+# With keywords for better accuracy on domain-specific terms
 config = TranscriptionConfig(
-    vad_config=VADConfig(
-        mode="server_vad",
-        threshold=0.7,
-        silence_duration_ms=800
-    )
+    keywords=["OpenAI", "Budapest", "Python"],
+    prompt="Technical discussion about AI"
 )
 
-# With semantic VAD for intelligent turn detection
+# Request log probabilities
+config = TranscriptionConfig(include_logprobs=True)
+
+# All features combined
 config = TranscriptionConfig(
-    vad_config=VADConfig(mode="semantic_vad", eagerness="high")
+    model="gpt-4o-mini-transcribe",
+    language="en",
+    vad=VADConfig(mode="server_vad", threshold=0.7),
+    keywords=["machine learning", "neural networks"],
+    prompt="AI research discussion",
+    include_logprobs=True
 )
 ```
 
@@ -454,7 +478,7 @@ print(transcript)
 config = TranscriptionConfig(
     model="whisper-1",
     language="en",
-    temperature=0.2
+    keywords=["technical", "API"]
 )
 api = TranscriptionAPI(config)
 
