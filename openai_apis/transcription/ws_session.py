@@ -220,6 +220,40 @@ class TranscriptionSession(BaseSession):
         self._audit_log.log("audio.buffer_committed", {})
         self._logger.debug("Audio buffer committed")
 
+    async def update_vad(self, vad_config: VADConfig) -> None:
+        """Update VAD configuration at runtime.
+
+        Sends a session.update event with the new turn_detection configuration.
+        Can be called while the session is connected to switch between VAD modes.
+
+        Args:
+            vad_config: New VAD configuration to apply.
+
+        Raises:
+            InvalidStateTransition: If session is not in CONNECTED state.
+        """
+        if self._state != SessionState.CONNECTED:
+            raise InvalidStateTransition(
+                f"Cannot update VAD in state {self._state.value}, must be CONNECTED"
+            )
+
+        turn_detection = self._vad_config_to_turn_detection(vad_config)
+
+        event = {
+            "type": "session.update",
+            "session": {
+                "turn_detection": turn_detection,
+            },
+        }
+
+        await self._send_event(event)
+        self._config.vad_config = vad_config
+
+        self._audit_log.log("vad.updated", {
+            "mode": vad_config.mode,
+        })
+        self._logger.debug(f"VAD updated to mode={vad_config.mode}")
+
     async def _send_event(self, event: dict) -> None:
         """Send a JSON event over the WebSocket.
 
