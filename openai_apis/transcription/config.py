@@ -1,7 +1,7 @@
 """Configuration for transcription settings."""
 from dataclasses import dataclass
 from typing import Optional
-from openai_apis._config import BaseConfig
+from openai_apis._config import BaseConfig, VADConfig
 
 
 @dataclass
@@ -22,3 +22,6 @@ class TranscriptionConfig(BaseConfig):
     # Optional parameters
     temperature: float = 0.0  # 0-1, lower = more deterministic
     prompt: Optional[str] = None  # Context to guide transcription
+
+    # VAD configuration (None = disabled/push-to-talk)
+    vad_config: Optional[VADConfig] = None
