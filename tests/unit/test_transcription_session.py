@@ -4,6 +4,7 @@ import asyncio
 import json
 import base64
 import uuid
+import websockets
 from unittest.mock import AsyncMock, MagicMock, patch, PropertyMock, call
 from openai_apis.transcription.ws_session import TranscriptionSession
 from openai_apis.transcription.config import TranscriptionConfig
@@ -205,6 +206,27 @@ class TestTranscriptionSessionConnect:
                 assert "websocket.connected" in event_types
                 assert "session.configured" in event_types
 
+    @pytest.mark.asyncio
+    async def test_connect_non_matching_first_message(self):
+        """First message not session.created — callback not emitted."""
+        config = TranscriptionConfig(api_key="test-key")
+        session = TranscriptionSession(config=config)
+
+        mock_ws = MockWebSocket(
+            messages=[
+                json.dumps({"type": "other.event", "data": {}}),
+                json.dumps({"type": "session.updated", "session": {}}),
+            ]
+        )
+
+        callback_data = []
+        session.on("session.created", lambda data: callback_data.append(data))
+
+        with patch("openai_apis.transcription.ws_session.websockets.connect", new_callable=AsyncMock) as mock_connect:
+            mock_connect.return_value = mock_ws
+            async with session:
+                assert len(callback_data) == 0  # Not emitted because type didn't match
+
 
 class TestTranscriptionSessionDisconnect:
     """Test _disconnect method."""
@@ -274,6 +296,37 @@ class TestTranscriptionSessionDisconnect:
             events = session.audit_log.events
             event_types = [e.event_type for e in events]
             assert "websocket.disconnected" in event_types
+
+    @pytest.mark.asyncio
+    async def test_disconnect_no_receive_task(self):
+        """Disconnect handles None receive task gracefully."""
+        config = TranscriptionConfig(api_key="test-key")
+        session = TranscriptionSession(config=config)
+        # Manually set state and ws without a receive task
+        session._state = SessionState.CONNECTED
+        mock_ws = MockWebSocket()
+        session._ws = mock_ws
+        session._receive_task = None
+
+        # Transition to disconnecting
+        session._transition_to(SessionState.DISCONNECTING)
+        await session._disconnect()
+
+        assert mock_ws.closed is True
+        assert session._ws is None
+
+    @pytest.mark.asyncio
+    async def test_disconnect_no_websocket(self):
+        """Disconnect handles None websocket gracefully."""
+        config = TranscriptionConfig(api_key="test-key")
+        session = TranscriptionSession(config=config)
+        session._state = SessionState.CONNECTED
+        session._ws = None
+        session._receive_task = None
+
+        session._transition_to(SessionState.DISCONNECTING)
+        await session._disconnect()
+        # Should not raise
 
 
 class TestSendAudio:
@@ -373,6 +426,49 @@ class TestSendAudio:
 
         with pytest.raises(InvalidStateTransition):
             await session.send_audio(b"data")
+
+    @pytest.mark.asyncio
+    async def test_send_audio_empty_chunk(self):
+        """Empty audio bytes are encoded and sent."""
+        config = TranscriptionConfig(api_key="test-key")
+        session = TranscriptionSession(config=config)
+        mock_ws = MockWebSocket(
+            messages=[
+                json.dumps({"type": "session.created", "session": {}}),
+                json.dumps({"type": "session.updated", "session": {}}),
+            ]
+        )
+        with patch("openai_apis.transcription.ws_session.websockets.connect", new_callable=AsyncMock) as mock_connect:
+            mock_connect.return_value = mock_ws
+            async with session:
+                await session.send_audio(b"")
+                sent_messages = [json.loads(msg) for msg in mock_ws.sent_messages]
+                audio_msg = next(
+                    (msg for msg in sent_messages if msg["type"] == "input_audio_buffer.append"),
+                    None,
+                )
+                assert audio_msg is not None
+                assert audio_msg["audio"] == base64.b64encode(b"").decode("ascii")
+
+    @pytest.mark.asyncio
+    async def test_send_multiple_audio_chunks(self):
+        """Multiple sequential audio chunks all sent correctly."""
+        config = TranscriptionConfig(api_key="test-key")
+        session = TranscriptionSession(config=config)
+        mock_ws = MockWebSocket(
+            messages=[
+                json.dumps({"type": "session.created", "session": {}}),
+                json.dumps({"type": "session.updated", "session": {}}),
+            ]
+        )
+        with patch("openai_apis.transcription.ws_session.websockets.connect", new_callable=AsyncMock) as mock_connect:
+            mock_connect.return_value = mock_ws
+            async with session:
+                for i in range(3):
+                    await session.send_audio(bytes([i] * 100))
+                sent_messages = [json.loads(msg) for msg in mock_ws.sent_messages]
+                audio_msgs = [msg for msg in sent_messages if msg["type"] == "input_audio_buffer.append"]
+                assert len(audio_msgs) == 3
 
 
 class TestCommitAudio:
@@ -561,6 +657,62 @@ class TestHandleMessage:
         event_types = [e.event_type for e in events]
         assert "event.received.conversation.item.input_audio_transcription.delta" in event_types
 
+    def test_session_created_in_handle_message(self):
+        """session.created event in message routing emits callback."""
+        session = TranscriptionSession()
+        callback_data = None
+        def callback(data):
+            nonlocal callback_data
+            callback_data = data
+        session.on("session.created", callback)
+        message = json.dumps({
+            "type": "session.created",
+            "session": {"id": "sess_123"},
+        })
+        session._handle_message(message)
+        assert callback_data is not None
+        assert callback_data["id"] == "sess_123"
+
+    def test_session_updated_in_handle_message(self):
+        """session.updated event in message routing emits callback."""
+        session = TranscriptionSession()
+        callback_data = None
+        def callback(data):
+            nonlocal callback_data
+            callback_data = data
+        session.on("session.updated", callback)
+        message = json.dumps({
+            "type": "session.updated",
+            "session": {"modalities": ["text"]},
+        })
+        session._handle_message(message)
+        assert callback_data is not None
+        assert callback_data["modalities"] == ["text"]
+
+    def test_buffer_committed_in_handle_message(self):
+        """input_audio_buffer.committed event logs info."""
+        session = TranscriptionSession()
+        message = json.dumps({
+            "type": "input_audio_buffer.committed",
+            "item_id": "item_abc",
+        })
+        # Should not raise, just log
+        session._handle_message(message)
+
+    def test_invalid_json_does_not_raise(self):
+        """Invalid JSON is caught and logged, not raised."""
+        session = TranscriptionSession()
+        # Should not raise
+        session._handle_message("not valid json {{{")
+
+    def test_generic_exception_in_handle_message(self):
+        """Generic exception in message handling is caught."""
+        session = TranscriptionSession()
+        # Patch json.loads to raise a generic exception
+        with patch('openai_apis.transcription.ws_session.json.loads', side_effect=RuntimeError("unexpected")):
+            # Should not raise
+            session._handle_message('{"type": "test"}')
+
 
 class TestEventCallbacks:
     """Test callback registration and invocation."""
@@ -668,6 +820,206 @@ class TestReconnect:
         # The basic audit logging is tested in other tests
         session = TranscriptionSession()
         assert session.audit_log is not None
+
+
+class ConnectionClosedWS:
+    """Mock WS that raises ConnectionClosed on async iteration."""
+    def __aiter__(self):
+        return self
+    async def __anext__(self):
+        raise websockets.ConnectionClosed(None, None)
+
+
+class ErrorWS:
+    """Mock WS that raises RuntimeError on async iteration."""
+    def __aiter__(self):
+        return self
+    async def __anext__(self):
+        raise RuntimeError("unexpected")
+
+
+class CancelledWS:
+    """Mock WS that raises CancelledError on async iteration."""
+    def __aiter__(self):
+        return self
+    async def __anext__(self):
+        raise asyncio.CancelledError()
+
+
+class TestReceiveLoop:
+    """Test _receive_loop exception handling."""
+
+    @pytest.mark.asyncio
+    async def test_receive_loop_connection_closed_triggers_reconnect(self):
+        """ConnectionClosed in receive loop calls _reconnect."""
+        config = TranscriptionConfig(api_key="test-key")
+        session = TranscriptionSession(config=config)
+        # Put session in CONNECTED state manually for this unit test
+        session._state = SessionState.CONNECTED
+
+        # Mock a websocket that raises ConnectionClosed on iteration
+        session._ws = ConnectionClosedWS()
+
+        with patch.object(session, '_reconnect', new_callable=AsyncMock) as mock_reconnect:
+            await session._receive_loop()
+            mock_reconnect.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_receive_loop_generic_exception_emits_error(self):
+        """Generic exception in receive loop emits error callback."""
+        config = TranscriptionConfig(api_key="test-key")
+        session = TranscriptionSession(config=config)
+        session._state = SessionState.CONNECTED
+
+        session._ws = ErrorWS()
+
+        errors = []
+        session.on("error", lambda data: errors.append(data))
+
+        await session._receive_loop()
+        assert len(errors) == 1
+        assert errors[0]["type"] == "receive_loop_error"
+
+    @pytest.mark.asyncio
+    async def test_receive_loop_cancelled_error_propagates(self):
+        """CancelledError in receive loop is re-raised."""
+        config = TranscriptionConfig(api_key="test-key")
+        session = TranscriptionSession(config=config)
+        session._state = SessionState.CONNECTED
+
+        session._ws = CancelledWS()
+
+        with pytest.raises(asyncio.CancelledError):
+            await session._receive_loop()
+
+
+class TestReconnectFull:
+    """Test _reconnect with actual WebSocket mocking."""
+
+    @pytest.mark.asyncio
+    async def test_reconnect_success_first_attempt(self):
+        """Successful reconnection on first attempt."""
+        config = TranscriptionConfig(api_key="test-key")
+        session = TranscriptionSession(config=config, reconnect_delay=0.01)
+        session._state = SessionState.CONNECTED
+
+        mock_ws = MockWebSocket(
+            messages=[
+                json.dumps({"type": "session.created", "session": {}}),
+                json.dumps({"type": "session.updated", "session": {}}),
+            ]
+        )
+
+        with patch("openai_apis.transcription.ws_session.websockets.connect", new_callable=AsyncMock) as mock_connect:
+            mock_connect.return_value = mock_ws
+
+            await session._reconnect()
+
+            mock_connect.assert_called_once()
+            assert session._ws is mock_ws
+            assert session._receive_task is not None
+
+            # Verify audit log
+            events = session.audit_log.events
+            event_types = [e.event_type for e in events]
+            assert "websocket.reconnect_success" in event_types
+
+            # Cleanup task
+            session._receive_task.cancel()
+            try:
+                await session._receive_task
+            except asyncio.CancelledError:
+                pass
+
+    @pytest.mark.asyncio
+    async def test_reconnect_all_attempts_fail(self):
+        """All reconnection attempts fail, emits error."""
+        config = TranscriptionConfig(api_key="test-key")
+        session = TranscriptionSession(
+            config=config,
+            max_reconnect_attempts=2,
+            reconnect_delay=0.01,
+        )
+        session._state = SessionState.CONNECTED
+
+        errors = []
+        session.on("error", lambda data: errors.append(data))
+
+        with patch("openai_apis.transcription.ws_session.websockets.connect", new_callable=AsyncMock) as mock_connect:
+            mock_connect.side_effect = ConnectionError("refused")
+
+            await session._reconnect()
+
+            assert mock_connect.call_count == 2
+            assert len(errors) == 1
+            assert errors[0]["type"] == "reconnect_failed"
+
+            # Verify audit log
+            events = session.audit_log.events
+            event_types = [e.event_type for e in events]
+            assert "websocket.reconnect_failed" in event_types
+
+    @pytest.mark.asyncio
+    async def test_reconnect_success_after_failures(self):
+        """Reconnection succeeds after initial failures."""
+        config = TranscriptionConfig(api_key="test-key")
+        session = TranscriptionSession(
+            config=config,
+            max_reconnect_attempts=3,
+            reconnect_delay=0.01,
+        )
+        session._state = SessionState.CONNECTED
+
+        mock_ws = MockWebSocket(
+            messages=[
+                json.dumps({"type": "session.created", "session": {}}),
+                json.dumps({"type": "session.updated", "session": {}}),
+            ]
+        )
+
+        call_count = [0]
+        async def connect_side_effect(*args, **kwargs):
+            call_count[0] += 1
+            if call_count[0] < 3:
+                raise ConnectionError("not yet")
+            return mock_ws
+
+        with patch("openai_apis.transcription.ws_session.websockets.connect", new_callable=AsyncMock) as mock_connect:
+            mock_connect.side_effect = connect_side_effect
+
+            await session._reconnect()
+
+            assert call_count[0] == 3  # Failed twice, succeeded on third
+            assert session._ws is mock_ws
+
+            # Cleanup
+            session._receive_task.cancel()
+            try:
+                await session._receive_task
+            except asyncio.CancelledError:
+                pass
+
+    @pytest.mark.asyncio
+    async def test_reconnect_audit_logs_each_attempt(self):
+        """Each reconnection attempt is audit logged."""
+        config = TranscriptionConfig(api_key="test-key")
+        session = TranscriptionSession(
+            config=config,
+            max_reconnect_attempts=2,
+            reconnect_delay=0.01,
+        )
+        session._state = SessionState.CONNECTED
+
+        with patch("openai_apis.transcription.ws_session.websockets.connect", new_callable=AsyncMock) as mock_connect:
+            mock_connect.side_effect = ConnectionError("fail")
+
+            await session._reconnect()
+
+            events = session.audit_log.events
+            attempt_events = [e for e in events if e.event_type == "websocket.reconnect_attempt"]
+            assert len(attempt_events) == 2
+            assert attempt_events[0].data["attempt"] == 1
+            assert attempt_events[1].data["attempt"] == 2
 
 
 class TestAsyncContextManager:
@@ -984,3 +1336,86 @@ class TestVADConfiguration:
                 new_vad = VADConfig(mode="semantic_vad", eagerness="medium")
                 await session.update_vad(new_vad)
                 assert session._config.vad_config == new_vad
+
+
+class TestSessionUpdatePayload:
+    """Test session.update event content."""
+
+    @pytest.mark.asyncio
+    async def test_session_update_contains_language(self):
+        """session.update includes configured language."""
+        config = TranscriptionConfig(api_key="test-key", language="hu")
+        session = TranscriptionSession(config=config)
+
+        mock_ws = MockWebSocket(
+            messages=[
+                json.dumps({"type": "session.created", "session": {}}),
+                json.dumps({"type": "session.updated", "session": {}}),
+            ]
+        )
+        with patch("openai_apis.transcription.ws_session.websockets.connect", new_callable=AsyncMock) as mock_connect:
+            mock_connect.return_value = mock_ws
+
+            async with session:
+                sent_messages = [json.loads(msg) for msg in mock_ws.sent_messages]
+                session_update = next(
+                    (msg for msg in sent_messages if msg["type"] == "session.update"),
+                    None,
+                )
+                assert session_update["session"]["input_audio_transcription"]["language"] == "hu"
+
+    @pytest.mark.asyncio
+    async def test_session_update_model_always_whisper1(self):
+        """Transcription model in session.update is always whisper-1."""
+        config = TranscriptionConfig(api_key="test-key", model="gpt-4o-mini-transcribe")
+        session = TranscriptionSession(config=config)
+
+        mock_ws = MockWebSocket(
+            messages=[
+                json.dumps({"type": "session.created", "session": {}}),
+                json.dumps({"type": "session.updated", "session": {}}),
+            ]
+        )
+        with patch("openai_apis.transcription.ws_session.websockets.connect", new_callable=AsyncMock) as mock_connect:
+            mock_connect.return_value = mock_ws
+
+            async with session:
+                sent_messages = [json.loads(msg) for msg in mock_ws.sent_messages]
+                session_update = next(
+                    (msg for msg in sent_messages if msg["type"] == "session.update"),
+                    None,
+                )
+                assert session_update["session"]["input_audio_transcription"]["model"] == "whisper-1"
+
+    @pytest.mark.asyncio
+    async def test_session_update_push_to_talk_mode(self):
+        """session.update sets turn_detection to None (push-to-talk)."""
+        config = TranscriptionConfig(api_key="test-key")
+        session = TranscriptionSession(config=config)
+
+        mock_ws = MockWebSocket(
+            messages=[
+                json.dumps({"type": "session.created", "session": {}}),
+                json.dumps({"type": "session.updated", "session": {}}),
+            ]
+        )
+        with patch("openai_apis.transcription.ws_session.websockets.connect", new_callable=AsyncMock) as mock_connect:
+            mock_connect.return_value = mock_ws
+
+            async with session:
+                sent_messages = [json.loads(msg) for msg in mock_ws.sent_messages]
+                session_update = next(
+                    (msg for msg in sent_messages if msg["type"] == "session.update"),
+                    None,
+                )
+                assert session_update["session"]["turn_detection"] is None
+
+
+class TestClassConstants:
+    """Test TranscriptionSession class-level constants."""
+
+    def test_websocket_url(self):
+        assert TranscriptionSession.WEBSOCKET_URL == "wss://api.openai.com/v1/realtime"
+
+    def test_realtime_model(self):
+        assert TranscriptionSession.REALTIME_MODEL == "gpt-4o-mini-realtime-preview-2024-12-17"
