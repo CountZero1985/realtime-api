@@ -92,6 +92,31 @@ class TestRealtimeConfig:
         config = RealtimeConfig(modalities=["text"])
         assert config.modalities == ["text"]
 
+    def test_config_with_keywords(self):
+        """Test RealtimeConfig with keywords."""
+        config = RealtimeConfig(keywords=["OpenAI", "WebSocket", "transzkripció"])
+        assert config.keywords == ["OpenAI", "WebSocket", "transzkripció"]
+
+    def test_config_keywords_default_none(self):
+        """Test RealtimeConfig keywords default is None."""
+        config = RealtimeConfig()
+        assert config.keywords is None
+
+    def test_config_language_english(self):
+        """Test RealtimeConfig with English language."""
+        config = RealtimeConfig(language="en")
+        assert config.language == "en"
+
+    def test_config_language_german(self):
+        """Test RealtimeConfig with German language."""
+        config = RealtimeConfig(language="de")
+        assert config.language == "de"
+
+    def test_config_language_french(self):
+        """Test RealtimeConfig with French language."""
+        config = RealtimeConfig(language="fr")
+        assert config.language == "fr"
+
 
 # RealtimeAgentState Tests
 
@@ -219,6 +244,41 @@ class TestRealtimeVoiceAPI:
         assert event["session"]["modalities"] == api_instance.config.modalities
         assert event["session"]["input_audio_transcription"]["language"] == api_instance.config.language
         assert event["session"]["turn_detection"] is None
+
+    def test_create_session_update_event_with_keywords(self):
+        """Test session update event includes keywords as prompt."""
+        config = RealtimeConfig(keywords=["OpenAI", "WebSocket"])
+        with patch.dict('os.environ', {'OPENAI_API_KEY': 'test-key'}):
+            api = RealtimeVoiceAPI(config=config)
+        event = api._create_session_update_event()
+        transcription = event["session"]["input_audio_transcription"]
+        assert transcription["prompt"] == "OpenAI, WebSocket"
+
+    def test_create_session_update_event_without_keywords(self):
+        """Test session update event omits prompt when no keywords."""
+        config = RealtimeConfig(keywords=None)
+        with patch.dict('os.environ', {'OPENAI_API_KEY': 'test-key'}):
+            api = RealtimeVoiceAPI(config=config)
+        event = api._create_session_update_event()
+        transcription = event["session"]["input_audio_transcription"]
+        assert "prompt" not in transcription
+
+    def test_create_session_update_event_empty_keywords(self):
+        """Test session update event omits prompt when keywords is empty list."""
+        config = RealtimeConfig(keywords=[])
+        with patch.dict('os.environ', {'OPENAI_API_KEY': 'test-key'}):
+            api = RealtimeVoiceAPI(config=config)
+        event = api._create_session_update_event()
+        transcription = event["session"]["input_audio_transcription"]
+        assert "prompt" not in transcription
+
+    def test_create_session_update_event_language(self):
+        """Test session update event includes configured language."""
+        config = RealtimeConfig(language="en")
+        with patch.dict('os.environ', {'OPENAI_API_KEY': 'test-key'}):
+            api = RealtimeVoiceAPI(config=config)
+        event = api._create_session_update_event()
+        assert event["session"]["input_audio_transcription"]["language"] == "en"
 
     def test_on_open(self, api_instance):
         """Test WebSocket on_open handler."""
@@ -673,6 +733,49 @@ class TestRealtimeVoiceAPIIntegration:
             api._send_audio_chunk(mock_ws, audio2)
 
             assert mock_ws.send.call_count == 2
+
+    def test_audit_log_includes_keywords_on_init(self):
+        """Test that audit log at init includes keywords."""
+        with patch.dict('os.environ', {'OPENAI_API_KEY': 'test-key'}), \
+             patch('openai_apis.realtime.session.log_audit_event') as mock_audit:
+            config = RealtimeConfig(keywords=["OpenAI", "API"])
+            api = RealtimeVoiceAPI(config=config)
+
+        mock_audit.assert_any_call(
+            event_type="realtime_init",
+            action="realtime_api_initialized",
+            details={
+                "model": config.model,
+                "language": "hu",
+                "keywords": ["OpenAI", "API"]
+            }
+        )
+
+    def test_audit_log_includes_keywords_on_session_configured(self):
+        """Test that audit log at session configured includes keywords."""
+        config = RealtimeConfig(keywords=["transzkripció", "WebSocket"])
+        with patch.dict('os.environ', {'OPENAI_API_KEY': 'test-key'}):
+            api = RealtimeVoiceAPI(config=config)
+
+        mock_ws = Mock()
+        message = json.dumps({
+            "type": "session.created",
+            "session": {"id": "sess_test"}
+        })
+
+        with patch('openai_apis.realtime.session.log_audit_event') as mock_audit:
+            api._on_message(mock_ws, message)
+
+        # Find the session_configured call
+        configured_calls = [
+            c for c in mock_audit.call_args_list
+            if c.kwargs.get('action') == 'session_configured'
+                or (len(c.args) > 1 and c.args[1] == 'session_configured')
+        ]
+        assert len(configured_calls) == 1
+        details = configured_calls[0].kwargs['details']
+        assert details['keywords'] == ["transzkripció", "WebSocket"]
+        assert details['language'] == "hu"
 
 
 # Convenience Function Tests
