@@ -18,6 +18,7 @@ class RealtimeConfig(BaseConfig):
     # Transcription settings
     transcription_model: str = "gpt-4o-mini-transcribe"
     language: str = "hu"  # Hungarian by default
+    keywords: Optional[List[str]] = None  # Domain-specific keywords for transcription steering
 
     # Audio settings
     sample_rate: int = 24000
