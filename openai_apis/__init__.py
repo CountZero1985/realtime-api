@@ -51,6 +51,7 @@ from openai_apis.tts import (
 )
 
 # Realtime (M3) - Optional: requires audio dependencies
+from openai_apis.realtime.events import TranscriptDelta, TranscriptCompleted, ErrorEvent
 try:
     from openai_apis.realtime import RealtimeVoiceAPI, RealtimeConfig, RealtimeAgentState
 except ImportError:
@@ -92,4 +93,7 @@ __all__ = [
     "RealtimeVoiceAPI",
     "RealtimeConfig",
     "RealtimeAgentState",
+    "TranscriptDelta",
+    "TranscriptCompleted",
+    "ErrorEvent",
 ]
