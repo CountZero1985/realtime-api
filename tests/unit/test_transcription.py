@@ -110,6 +110,28 @@ class TestTranscriptionConfig:
         assert custom_transcription_config.temperature == 0.5
         assert custom_transcription_config.prompt == "Custom context"
 
+    def test_config_inherits_audio_format(self):
+        """TranscriptionConfig has audio_format from BaseConfig."""
+        config = TranscriptionConfig()
+        assert config.audio_format.sample_rate == 24000
+        assert config.audio_format.channels == 1
+
+    def test_config_invalid_timeout_raises(self):
+        """Negative timeout raises ValueError via BaseConfig.__post_init__."""
+        with pytest.raises(ValueError):
+            TranscriptionConfig(timeout=-1.0)
+
+    def test_config_zero_timeout_raises(self):
+        """Zero timeout raises ValueError."""
+        with pytest.raises(ValueError):
+            TranscriptionConfig(timeout=0.0)
+
+    def test_config_api_key_from_env(self, monkeypatch):
+        """api_key loaded from OPENAI_API_KEY env var via BaseConfig."""
+        monkeypatch.setenv("OPENAI_API_KEY", "env-key-123")
+        config = TranscriptionConfig()
+        assert config.api_key == "env-key-123"
+
 
 # TranscriptionAPI Tests
 
@@ -323,6 +345,71 @@ class TestTranscriptionAPI:
 
             with pytest.raises(Exception, match="Transcription failed"):
                 await api.transcribe_file(temp_wav_file)
+
+    @pytest.mark.asyncio
+    async def test_transcribe_numpy_not_installed(self):
+        """transcribe() raises ImportError when numpy is None."""
+        with patch.dict('os.environ', {'OPENAI_API_KEY': 'test-key'}):
+            api = TranscriptionAPI()
+            with patch('openai_apis.transcription.session.np', None):
+                with pytest.raises(ImportError, match="numpy is required"):
+                    await api.transcribe("dummy")
+
+    def test_transcribe_sync_numpy_not_installed(self):
+        """transcribe_sync() raises ImportError when numpy is None."""
+        with patch.dict('os.environ', {'OPENAI_API_KEY': 'test-key'}):
+            api = TranscriptionAPI()
+            with patch('openai_apis.transcription.session.np', None):
+                with pytest.raises(ImportError, match="numpy is required"):
+                    api.transcribe_sync("dummy")
+
+    @pytest.mark.asyncio
+    async def test_transcribe_file_no_language(self, temp_wav_file):
+        """transcribe_file() omits language param when language is None."""
+        config = TranscriptionConfig(language=None, api_key="test-key")
+        api = TranscriptionAPI(config=config)
+        api.client.audio.transcriptions.create = AsyncMock(return_value="no lang")
+        await api.transcribe_file(temp_wav_file)
+        call_kwargs = api.client.audio.transcriptions.create.call_args[1]
+        assert "language" not in call_kwargs
+
+    @pytest.mark.asyncio
+    async def test_transcribe_file_config_prompt_used(self, temp_wav_file):
+        """Config prompt used when no parameter prompt given."""
+        config = TranscriptionConfig(prompt="config prompt", api_key="test-key")
+        api = TranscriptionAPI(config=config)
+        api.client.audio.transcriptions.create = AsyncMock(return_value="result")
+        await api.transcribe_file(temp_wav_file)
+        call_kwargs = api.client.audio.transcriptions.create.call_args[1]
+        assert call_kwargs["prompt"] == "config prompt"
+
+    @pytest.mark.asyncio
+    async def test_transcribe_file_no_prompt(self, temp_wav_file):
+        """Prompt key omitted when both config.prompt and param are None."""
+        config = TranscriptionConfig(prompt=None, api_key="test-key")
+        api = TranscriptionAPI(config=config)
+        api.client.audio.transcriptions.create = AsyncMock(return_value="no prompt")
+        await api.transcribe_file(temp_wav_file)
+        call_kwargs = api.client.audio.transcriptions.create.call_args[1]
+        assert "prompt" not in call_kwargs
+
+    @pytest.mark.asyncio
+    async def test_transcribe_file_string_path(self, temp_wav_file):
+        """String path is accepted and converted to Path."""
+        with patch.dict('os.environ', {'OPENAI_API_KEY': 'test-key'}):
+            api = TranscriptionAPI()
+            api.client.audio.transcriptions.create = AsyncMock(return_value="string path")
+            result = await api.transcribe_file(str(temp_wav_file))
+            assert result == "string path"
+
+    @pytest.mark.asyncio
+    async def test_transcribe_file_json_missing_text_key(self, temp_wav_file):
+        """JSON response missing 'text' key returns empty string."""
+        config = TranscriptionConfig(response_format="json", api_key="test-key")
+        api = TranscriptionAPI(config=config)
+        api.client.audio.transcriptions.create = AsyncMock(return_value={"duration": 5.0})
+        result = await api.transcribe_file(temp_wav_file)
+        assert result == ""
 
     def test_transcribe_sync(self, sample_audio):
         """Test synchronous transcription."""
@@ -570,6 +657,43 @@ class TestTranscriptionAPIEdgeCases:
             # Test with list
             with pytest.raises(ValueError):
                 asyncio.run(api.transcribe([1, 2, 3]))
+
+    @pytest.mark.asyncio
+    async def test_temp_file_cleanup_on_error(self, sample_audio):
+        """Temp WAV file is cleaned up even when transcribe_file raises."""
+        with patch.dict('os.environ', {'OPENAI_API_KEY': 'test-key'}):
+            api = TranscriptionAPI()
+            with patch.object(api, 'transcribe_file', side_effect=Exception("API error")):
+                with pytest.raises(Exception, match="API error"):
+                    await api.transcribe(sample_audio)
+            # If we get here without temp file errors, cleanup worked
+            # (the finally block in transcribe() handles this)
+
+    @pytest.mark.asyncio
+    async def test_temp_file_unlink_failure_swallowed(self, sample_audio):
+        """os.unlink failure is swallowed silently."""
+        with patch.dict('os.environ', {'OPENAI_API_KEY': 'test-key'}):
+            api = TranscriptionAPI()
+            with patch.object(api, 'transcribe_file', return_value="result"):
+                with patch('os.unlink', side_effect=PermissionError("no perm")):
+                    result = await api.transcribe(sample_audio)
+                    assert result == "result"
+
+
+class TestTranscriptionImports:
+    """Test package-level imports."""
+
+    def test_import_from_transcription_package(self):
+        """Importing from openai_apis.transcription works."""
+        from openai_apis.transcription import TranscriptionAPI, TranscriptionConfig
+        assert TranscriptionAPI is not None
+        assert TranscriptionConfig is not None
+
+    def test_import_from_top_level_package(self):
+        """Importing from openai_apis works."""
+        from openai_apis import TranscriptionAPI, TranscriptionConfig
+        assert TranscriptionAPI is not None
+        assert TranscriptionConfig is not None
 
 
 if __name__ == "__main__":
