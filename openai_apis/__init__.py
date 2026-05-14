@@ -35,7 +35,7 @@ from openai_apis._session import BaseSession, SessionState, InvalidStateTransiti
 from openai_apis._config import BaseConfig, AudioFormat, VADConfig
 
 # Transcription (M2)
-from openai_apis.transcription import TranscriptionAPI, TranscriptionConfig
+from openai_apis.transcription import TranscriptionAPI, TranscriptionConfig, TranscriptionSession
 
 # TTS (M1)
 from openai_apis.tts import (
@@ -77,6 +77,7 @@ __all__ = [
     # Transcription
     "TranscriptionAPI",
     "TranscriptionConfig",
+    "TranscriptionSession",
     # TTS
     "TTSAPI",
     "TTSConfig",
