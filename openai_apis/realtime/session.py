@@ -250,6 +250,13 @@ class RealtimeVoiceAPI:
 
     def _create_session_update_event(self) -> Dict[str, Any]:
         """Create session.update event from config."""
+        transcription_config = {
+            "model": self.config.transcription_model,
+            "language": self.config.language
+        }
+        if self.config.keywords:
+            transcription_config["prompt"] = ", ".join(self.config.keywords)
+
         return {
             "type": "session.update",
             "session": {
@@ -258,10 +265,7 @@ class RealtimeVoiceAPI:
                 "voice": self.config.voice,
                 "input_audio_format": "pcm16",
                 "output_audio_format": "pcm16",
-                "input_audio_transcription": {
-                    "model": self.config.transcription_model,
-                    "language": self.config.language
-                },
+                "input_audio_transcription": transcription_config,
                 "turn_detection": None,  # Manual turn detection (push-to-talk)
                 "temperature": self.config.temperature,
                 "max_response_output_tokens": self.config.max_response_output_tokens,
