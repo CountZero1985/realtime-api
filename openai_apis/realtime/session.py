@@ -253,7 +253,19 @@ class RealtimeVoiceAPI:
             )
 
     def _create_session_update_event(self) -> Dict[str, Any]:
-        """Create session.update event from config."""
+        """Create session.update event from config.
+
+        Builds a session.update WebSocket event containing all session configuration,
+        including language and optional keyword steering for transcription.
+
+        Keywords are propagated via the input_audio_transcription.prompt field:
+        - For whisper-1: comma-separated keyword list
+        - For gpt-4o-transcribe models: free-text hint for domain-specific terms
+        - Omitted when config.keywords is None or empty
+
+        Returns:
+            Dict containing session.update event structure
+        """
         transcription_config = {
             "model": self.config.transcription_model,
             "language": self.config.language

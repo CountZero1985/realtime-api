@@ -1379,6 +1379,7 @@ Configuration for Realtime API sessions. Extends `BaseConfig`.
 | `speed` | `float` | `1.1` | Speech speed (0.25-4.0) |
 | `transcription_model` | `str` | `"gpt-4o-mini-transcribe"` | Model for transcription |
 | `language` | `str` | `"hu"` | Language code (ISO-639-1) |
+| `keywords` | `Optional[List[str]]` | `None` | Domain-specific keywords for transcription steering |
 | `sample_rate` | `int` | `24000` | Audio sample rate in Hz |
 | `chunk_duration_s` | `float` | `0.5` | Audio chunk duration in seconds |
 | `channels` | `int` | `1` | Audio channels (1 = mono) |
@@ -1405,8 +1406,37 @@ config = RealtimeConfig(
     temperature=0.7
 )
 
+# Hungarian with domain-specific keywords for better transcription
+config = RealtimeConfig(
+    language="hu",
+    keywords=["OpenAI", "WebSocket", "transzkripció", "API"]
+)
+
 # Text-only mode (no audio)
 config = RealtimeConfig(modalities=["text"])
+```
+
+#### Keyword Steering
+
+The `keywords` field enables domain-specific transcription steering via the OpenAI Realtime API's `input_audio_transcription.prompt` field:
+
+- **For `whisper-1` model**: Keywords are sent as a comma-separated list (e.g., `"OpenAI, WebSocket, API"`)
+- **For `gpt-4o-transcribe` models**: Keywords are sent as a free-text hint for better domain-specific transcription
+- **Automatic propagation**: Keywords are automatically included in the `session.update` WebSocket event when the session is configured
+- **Smart omission**: The `prompt` field is only included when `keywords` is non-empty (omitted for `None` or empty list `[]`)
+
+**Example:**
+```python
+config = RealtimeConfig(
+    language="hu",
+    keywords=["mesterséges intelligencia", "neurális hálózat", "gépi tanulás"]
+)
+# Results in session.update event with:
+# "input_audio_transcription": {
+#     "model": "gpt-4o-mini-transcribe",
+#     "language": "hu",
+#     "prompt": "mesterséges intelligencia, neurális hálózat, gépi tanulás"
+# }
 ```
 
 ---

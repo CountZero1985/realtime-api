@@ -93,7 +93,9 @@ examples/               # Standalone example applications
 ### Realtime Voice API (`openai_apis/realtime/`)
 - **`RealtimeVoiceAPI`**: Direct WebSocket connection to OpenAI Realtime API
 - **`RealtimeAgentState`**: State manager for realtime sessions
-- **`RealtimeConfig`**: Session configuration (model, voice, modalities)
+- **`RealtimeConfig`**: Session configuration (model, voice, modalities, language, keywords)
+  - `language` field for setting transcription language (default: "hu")
+  - `keywords` field for domain-specific transcription steering (comma-separated prompt)
 - Push-to-talk audio streaming
 - Real-time audio playback
 - Event-driven callbacks

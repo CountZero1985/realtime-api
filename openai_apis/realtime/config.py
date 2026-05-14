@@ -6,7 +6,24 @@ from openai_apis._config import BaseConfig
 
 @dataclass
 class RealtimeConfig(BaseConfig):
-    """Configuration for Realtime API session."""
+    """Configuration for Realtime API session.
+
+    Attributes:
+        model: Realtime model identifier
+        voice: Voice for TTS (sage, ash, alloy, echo, shimmer)
+        speed: Speech speed (0.25-4.0)
+        transcription_model: Model for speech-to-text transcription
+        language: Language code for transcription (ISO-639-1, e.g., "hu", "en")
+        keywords: Optional domain-specific keywords for transcription steering.
+                  Sent as comma-separated prompt to improve recognition of technical terms.
+        sample_rate: Audio sample rate in Hz
+        chunk_duration_s: Audio chunk duration in seconds
+        channels: Number of audio channels (1 = mono)
+        instructions: System instructions for the agent
+        modalities: Enabled modalities (["text", "audio"])
+        temperature: Sampling temperature
+        max_response_output_tokens: Maximum response tokens ("inf" or integer)
+    """
 
     # Model settings
     model: str = "gpt-4o-mini-realtime-preview-2024-12-17"
