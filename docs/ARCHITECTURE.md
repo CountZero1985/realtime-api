@@ -65,7 +65,8 @@ openai_apis/
 ├── transcription/          # Speech-to-text API (M2)
 │   ├── __init__.py         # Public exports
 │   ├── config.py           # TranscriptionConfig (extends BaseConfig)
-│   └── session.py          # TranscriptionAPI (stateless STT)
+│   ├── session.py          # TranscriptionAPI (stateless STT)
+│   └── ws_session.py       # TranscriptionSession (WebSocket realtime)
 │
 ├── tts/                    # Text-to-speech API (M1)
 │   ├── __init__.py         # Public exports
@@ -189,7 +190,7 @@ The system follows a layered architecture with clear separation between user int
 | **Application** | Business logic and workflow | VoicePipeline, StreamingVoiceWorkflow, CLI |
 | **Agent** | AI reasoning and tool use | assisstant_agent, tools_agent, tools |
 | **Audio I/O** | Audio recording and playback | record_audio(), AudioPlayer |
-| **OpenAI API** | External API integration | TranscriptionAPI, TTSAPI, RealtimeVoiceAPI |
+| **OpenAI API** | External API integration | TranscriptionAPI, TranscriptionSession, TTSAPI, RealtimeVoiceAPI |
 
 ---
 
@@ -240,13 +241,13 @@ All API modules depend on shared infrastructure:
     │                     │
 ┌───▼──────────┐   ┌──────▼────────┐
 │ Transcription│   │ Realtime      │
-│ API (future) │   │ VoiceAPI      │
-│              │   │ (has session) │
+│ Session      │   │ VoiceAPI      │
+│ (WebSocket)  │   │ (has session) │
 └──────────────┘   └───────────────┘
 
-Note: TranscriptionAPI and TTSAPI are currently stateless and
-do not extend BaseSession, but could in future versions for
-connection pooling or streaming sessions.
+Note: TranscriptionAPI and TTSAPI are stateless and do not
+extend BaseSession. TranscriptionSession provides WebSocket-
+based real-time transcription with full session lifecycle.
 ```
 
 ### API Module Independence
@@ -254,10 +255,17 @@ connection pooling or streaming sessions.
 Each API module can be used independently:
 
 ```python
-# Use Transcription API standalone
+# Use Transcription API standalone (stateless)
 from openai_apis import TranscriptionAPI
 api = TranscriptionAPI()
 transcript = await api.transcribe(audio_data)
+
+# Use Transcription Session for real-time streaming
+from openai_apis import TranscriptionSession
+async with TranscriptionSession() as session:
+    session.on("transcript.completed", lambda d: print(d["transcript"]))
+    await session.send_audio(audio_chunk)
+    await session.commit_audio()
 
 # Use TTS API standalone
 from openai_apis import TTSAPI

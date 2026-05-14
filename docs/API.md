@@ -15,6 +15,7 @@ Complete API reference for the `openai_apis` Python package, covering transcript
 - [Transcription API](#transcription-api)
   - [TranscriptionConfig](#transcriptionconfig)
   - [TranscriptionAPI](#transcriptionapi)
+  - [TranscriptionSession](#transcriptionsession)
 - [TTS API](#tts-api)
   - [TTSConfig](#ttsconfig)
   - [TTSRegistry](#ttsregistry)
@@ -448,6 +449,186 @@ transcripts = await api.transcribe_batch(files)
 for file, text in zip(files, transcripts):
     print(f"{file}: {text}")
 ```
+
+---
+
+### TranscriptionSession
+
+WebSocket-based async session for real-time transcription via OpenAI Realtime API. Inherits from `BaseSession` for lifecycle management.
+
+**Constructor:**
+
+```python
+TranscriptionSession(
+    config: Optional[TranscriptionConfig] = None,
+    max_reconnect_attempts: int = 3,
+    reconnect_delay: float = 1.0
+)
+```
+
+**Parameters:**
+- `config` (`Optional[TranscriptionConfig]`): Configuration. If `None`, uses default `TranscriptionConfig()`.
+- `max_reconnect_attempts` (`int`): Maximum reconnection attempts on connection drop (default: 3)
+- `reconnect_delay` (`float`): Base delay in seconds between reconnect attempts (default: 1.0, exponential backoff)
+
+**Attributes:**
+- `session_id` (`str`): Unique session UUID
+- `state` (`SessionState`): Current session state (CREATED, CONNECTING, CONNECTED, DISCONNECTING, CLOSED)
+- `audit_log` (`SessionAuditLog`): Per-session audit trail
+
+**Constants:**
+- `WEBSOCKET_URL` = `"wss://api.openai.com/v1/realtime"`
+- `REALTIME_MODEL` = `"gpt-4o-mini-realtime-preview-2024-12-17"`
+
+#### Methods
+
+**`async send_audio(chunk: bytes) -> None`**
+
+Send base64-encoded PCM16 audio chunk to the server.
+
+- **Parameters:**
+  - `chunk` (`bytes`): Raw PCM16 audio bytes (24kHz mono)
+- **Raises:** `InvalidStateTransition` if session is not in CONNECTED state
+- **Audit Event:** `audio.chunk_sent` with `{"chunk_size": <bytes>}`
+
+**`async commit_audio() -> None`**
+
+Commit audio buffer to trigger transcription (push-to-talk mode).
+
+- **Raises:** `InvalidStateTransition` if session is not in CONNECTED state
+- **Audit Event:** `audio.buffer_committed`
+
+**`on(event: str, callback: Callable) -> None`**
+
+Register a callback for a specific event (inherited from `BaseSession`).
+
+- **Parameters:**
+  - `event` (`str`): Event name (see [Supported Events](#supported-events) below)
+  - `callback` (`Callable[[dict], None]`): Callback function receiving event data
+
+#### Supported Events
+
+Events can be registered via `session.on(event_name, callback)`:
+
+| Event | Data Fields | Description |
+|-------|-------------|-------------|
+| `transcript.delta` | `delta` (str), `item_id` (str), `content_index` (int) | Partial transcription text (streaming) |
+| `transcript.completed` | `transcript` (str), `item_id` (str), `content_index` (int) | Final complete transcription |
+| `error` | `type` (str), `error` (dict), `item_id` (str, optional) | Error events from server |
+| `session.created` | Server session configuration (dict) | Server session created |
+| `session.updated` | Server session configuration (dict) | Server session configured |
+
+**Inherited events from BaseSession:**
+- `session.created`: Local session created
+- `session.state_transition`: State changed (data: `{"from": <state>, "to": <state>}`)
+- `session.closed`: Local session closed
+
+#### Lifecycle Management
+
+`TranscriptionSession` implements the `BaseSession` async context manager pattern:
+
+```python
+async with TranscriptionSession(config) as session:
+    # Session is automatically connected (state: CONNECTED)
+    # Work with session here
+    pass
+# Session is automatically disconnected (state: CLOSED)
+```
+
+**State transitions:**
+1. **CREATED** → Initial state after `__init__`
+2. **CONNECTING** → During `async with` entry (establishing WebSocket)
+3. **CONNECTED** → After successful connection and configuration
+4. **DISCONNECTING** → During `async with` exit (closing WebSocket)
+5. **CLOSED** → Final state after cleanup
+
+#### Usage Examples
+
+**Basic real-time transcription:**
+
+```python
+from openai_apis import TranscriptionSession, TranscriptionConfig
+
+# Configure session
+config = TranscriptionConfig(language="hu", model="whisper-1")
+
+# Connect and transcribe
+async with TranscriptionSession(config) as session:
+    # Register callback for complete transcripts
+    def on_transcript(data):
+        print(f"Transcript: {data['transcript']}")
+
+    session.on("transcript.completed", on_transcript)
+
+    # Send audio chunks (PCM16, 24kHz mono)
+    for chunk in audio_chunks:
+        await session.send_audio(chunk)
+
+    # Commit to trigger transcription
+    await session.commit_audio()
+```
+
+**Streaming transcription with delta events:**
+
+```python
+async with TranscriptionSession() as session:
+    # Register callbacks for streaming and final transcript
+    session.on("transcript.delta", lambda d: print(d["delta"], end=""))
+    session.on("transcript.completed", lambda d: print(f"\nFinal: {d['transcript']}"))
+
+    # Stream audio
+    await session.send_audio(audio_chunk_1)
+    await session.send_audio(audio_chunk_2)
+    await session.commit_audio()
+```
+
+**Error handling and reconnection:**
+
+```python
+config = TranscriptionConfig(language="en")
+
+async with TranscriptionSession(
+    config,
+    max_reconnect_attempts=5,
+    reconnect_delay=2.0
+) as session:
+    # Register error callback
+    def on_error(data):
+        print(f"Error: {data['type']} - {data.get('error')}")
+
+    session.on("error", on_error)
+
+    # Send audio and commit
+    await session.send_audio(audio_data)
+    await session.commit_audio()
+```
+
+**Access audit trail:**
+
+```python
+async with TranscriptionSession() as session:
+    await session.send_audio(audio_data)
+    await session.commit_audio()
+
+    # Export session audit log
+    session.audit_log.export_to_file("session_audit.json")
+
+    # Or access events directly
+    for event in session.audit_log.events:
+        print(f"{event.timestamp}: {event.event_type} - {event.data}")
+```
+
+#### Reconnection Behavior
+
+If the WebSocket connection drops during the receive loop, `TranscriptionSession` automatically attempts reconnection:
+
+1. Detects `websockets.ConnectionClosed` exception
+2. Attempts reconnection up to `max_reconnect_attempts` times
+3. Uses exponential backoff: `delay = reconnect_delay * (2 ** attempt)`
+4. Re-establishes connection and re-configures session
+5. Emits `error` event if all attempts fail
+
+**Note:** Audio buffer is **not** preserved during reconnection. Callers should handle the `error` callback to detect reconnection failures and re-send audio if needed.
 
 ---
 
@@ -1823,12 +2004,14 @@ from openai_apis import (
 from openai_apis import (
     TranscriptionAPI,
     TranscriptionConfig,
+    TranscriptionSession,
 )
 
 # Submodule imports also supported
 from openai_apis.transcription import (
     TranscriptionAPI,
     TranscriptionConfig,
+    TranscriptionSession,
     transcribe_audio,       # async convenience function
     transcribe_file,        # async convenience function
     transcribe_audio_sync,  # sync convenience function
