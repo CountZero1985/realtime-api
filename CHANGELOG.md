@@ -22,6 +22,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **VAD Configuration for TranscriptionSession** - Added Voice Activity Detection configuration to TranscriptionSession (issue #21):
+  - **`vad_config` field in `TranscriptionConfig`**: New optional field for VAD configuration (None = disabled/push-to-talk)
+  - **`update_vad()` method**: Runtime VAD mode switching via new `session.update_vad(vad_config)` method
+  - **Three VAD modes supported**: `server_vad` (threshold-based), `semantic_vad` (eagerness-based), `disabled` (push-to-talk)
+  - **Automatic turn_detection serialization**: Internal `_vad_config_to_turn_detection()` method converts VADConfig to OpenAI Realtime API format
+  - **Session.update event**: VAD settings sent via `session.update` WebSocket event to OpenAI API
+  - **Runtime switching**: VAD mode can be changed during active session via `update_vad()` method
+  - **State validation**: `update_vad()` requires CONNECTED state, raises `InvalidStateTransition` otherwise
+  - **Audit logging**: VAD updates logged with `vad.updated` event type and mode information
+  - **Backward compatible**: Default config (no vad_config) maintains push-to-talk behavior with `turn_detection: null`
+  - Comprehensive unit tests in `tests/unit/test_transcription_session.py::TestVADConfiguration` covering all modes, JSON serialization, and runtime switching
+
+### Added
+
 - **Delta Event Streaming with Typed Callbacks** - Implemented streaming transcript events for Realtime API (issue #20):
   - **Typed event objects**: New `TranscriptDelta`, `TranscriptCompleted`, and `ErrorEvent` dataclasses in `openai_apis/realtime/events.py`
   - **`TranscriptDelta`**: Partial transcription events (~200-500ms intervals) with `item_id`, `delta` text, and `accumulated` full text

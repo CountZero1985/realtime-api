@@ -537,6 +537,18 @@ Commit audio buffer to trigger transcription (push-to-talk mode).
 - **Raises:** `InvalidStateTransition` if session is not in CONNECTED state
 - **Audit Event:** `audio.buffer_committed`
 
+**`async update_vad(vad_config: VADConfig) -> None`**
+
+Update Voice Activity Detection configuration at runtime.
+
+Sends a `session.update` event with new turn_detection configuration. Can be called while the session is connected to switch between VAD modes (server_vad, semantic_vad, disabled).
+
+- **Parameters:**
+  - `vad_config` (`VADConfig`): New VAD configuration to apply
+- **Raises:** `InvalidStateTransition` if session is not in CONNECTED state
+- **Audit Event:** `vad.updated` with `{"mode": <vad_mode>}`
+- **Side Effects:** Updates internal `_config.vad_config` to preserve setting across reconnections
+
 **`on(event: str, callback: Callable) -> None`**
 
 Register a callback for a specific event (inherited from `BaseSession`).
@@ -640,6 +652,30 @@ async with TranscriptionSession(
     # Send audio and commit
     await session.send_audio(audio_data)
     await session.commit_audio()
+```
+
+**VAD configuration and runtime switching:**
+
+```python
+from openai_apis import TranscriptionSession, TranscriptionConfig, VADConfig
+
+# Start with server-side VAD
+vad = VADConfig(mode="server_vad", threshold=0.6, silence_duration_ms=600)
+config = TranscriptionConfig(vad_config=vad)
+
+async with TranscriptionSession(config) as session:
+    # Stream audio with automatic turn detection
+    await session.send_audio(audio_chunk)
+    # No need to call commit_audio() - VAD handles turn detection
+
+    # Switch to semantic VAD at runtime
+    new_vad = VADConfig(mode="semantic_vad", eagerness="high")
+    await session.update_vad(new_vad)
+
+    # Switch to push-to-talk mode (disable VAD)
+    await session.update_vad(VADConfig(mode="disabled"))
+    await session.send_audio(audio_chunk)
+    await session.commit_audio()  # Manual commit required when VAD disabled
 ```
 
 **Access audit trail:**
