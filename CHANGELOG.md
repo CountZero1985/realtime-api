@@ -36,6 +36,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Language Configuration and Keyword Steering** - Added keyword steering support to Realtime API transcription (issue #22):
+  - **`keywords` field in `RealtimeConfig`**: New optional field (`Optional[List[str]]`, default `None`) for domain-specific keyword steering
+  - **Keyword prompt propagation**: Keywords are sent via `input_audio_transcription.prompt` field in `session.update` WebSocket event
+  - **Flexible keyword format**: Keywords joined with `", "` for OpenAI API (comma-separated list for `whisper-1`, free-text hint for `gpt-4o-transcribe`-series)
+  - **Enhanced audit logging**: Both `language` and `keywords` now logged in `realtime_init` and `session_configured` audit events
+  - **Comprehensive testing**: Unit tests for keyword configuration, session update event propagation, and audit logging
+  - **Multi-language support**: Existing `language` field (default `"hu"`) now properly documented and tested with multiple languages (en, de, fr)
+  - **Smart field omission**: `prompt` field only included in session update when keywords are non-empty (omitted for `None` or empty list)
+  - New unit tests in `tests/unit/test_realtime_session.py` covering all keyword and language scenarios
+
 - **Delta Event Streaming with Typed Callbacks** - Implemented streaming transcript events for Realtime API (issue #20):
   - **Typed event objects**: New `TranscriptDelta`, `TranscriptCompleted`, and `ErrorEvent` dataclasses in `openai_apis/realtime/events.py`
   - **`TranscriptDelta`**: Partial transcription events (~200-500ms intervals) with `item_id`, `delta` text, and `accumulated` full text

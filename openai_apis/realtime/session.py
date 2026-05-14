@@ -177,7 +177,11 @@ class RealtimeVoiceAPI:
         log_audit_event(
             event_type="realtime_init",
             action="realtime_api_initialized",
-            details={"model": self.config.model, "language": self.config.language}
+            details={
+                "model": self.config.model,
+                "language": self.config.language,
+                "keywords": self.config.keywords
+            }
         )
 
     def set_output_device(self, device_index: int) -> None:
@@ -249,7 +253,26 @@ class RealtimeVoiceAPI:
             )
 
     def _create_session_update_event(self) -> Dict[str, Any]:
-        """Create session.update event from config."""
+        """Create session.update event from config.
+
+        Builds a session.update WebSocket event containing all session configuration,
+        including language and optional keyword steering for transcription.
+
+        Keywords are propagated via the input_audio_transcription.prompt field:
+        - For whisper-1: comma-separated keyword list
+        - For gpt-4o-transcribe models: free-text hint for domain-specific terms
+        - Omitted when config.keywords is None or empty
+
+        Returns:
+            Dict containing session.update event structure
+        """
+        transcription_config = {
+            "model": self.config.transcription_model,
+            "language": self.config.language
+        }
+        if self.config.keywords:
+            transcription_config["prompt"] = ", ".join(self.config.keywords)
+
         return {
             "type": "session.update",
             "session": {
@@ -258,10 +281,7 @@ class RealtimeVoiceAPI:
                 "voice": self.config.voice,
                 "input_audio_format": "pcm16",
                 "output_audio_format": "pcm16",
-                "input_audio_transcription": {
-                    "model": self.config.transcription_model,
-                    "language": self.config.language
-                },
+                "input_audio_transcription": transcription_config,
                 "turn_detection": None,  # Manual turn detection (push-to-talk)
                 "temperature": self.config.temperature,
                 "max_response_output_tokens": self.config.max_response_output_tokens,
@@ -318,7 +338,11 @@ class RealtimeVoiceAPI:
                     event_type="realtime_session",
                     action="session_configured",
                     session_id=self._session_id,
-                    details={"language": self.config.language, "voice": self.config.voice}
+                    details={
+                        "language": self.config.language,
+                        "voice": self.config.voice,
+                        "keywords": self.config.keywords
+                    }
                 )
 
         elif event_type == "session.updated" and self._session_configured.is_set() and not self._session_ready.is_set():

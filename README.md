@@ -237,6 +237,7 @@ def on_response_text(text):
 config = RealtimeConfig(
     voice="sage",
     language="hu",
+    keywords=["OpenAI", "API", "transzkripció"],  # Domain-specific keywords
     instructions="segíts a felhasználónak"
 )
 
