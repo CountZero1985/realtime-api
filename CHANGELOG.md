@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **TranscriptionSession WebSocket Client** - Implemented async WebSocket client for real-time transcription via OpenAI Realtime API (issue #18):
+  - **`TranscriptionSession` class**: New WebSocket-based session in `openai_apis/transcription/ws_session.py` inheriting from `BaseSession`
+  - **Real-time audio streaming**: Send audio chunks via `send_audio()` with base64-encoded PCM16 format
+  - **Push-to-talk mode**: Commit audio buffer via `commit_audio()` to trigger transcription
+  - **Streaming transcription**: Receive partial transcripts via `transcript.delta` callback and complete transcripts via `transcript.completed` callback
+  - **Reconnection logic**: Automatic reconnection with exponential backoff (configurable max attempts and delay)
+  - **Event-driven callbacks**: Support for `transcript.delta`, `transcript.completed`, `error`, `session.created`, `session.updated` events via `session.on()` method
+  - **Comprehensive audit logging**: All session lifecycle events, audio chunks, and server responses logged to per-session audit trail
+  - **State machine integration**: Full lifecycle management (CREATED → CONNECTING → CONNECTED → DISCONNECTING → CLOSED)
+  - **Async context manager**: Use `async with TranscriptionSession() as session:` for automatic connection/disconnection
+  - Connects to `wss://api.openai.com/v1/realtime` with `gpt-4o-mini-realtime-preview-2024-12-17` model
+  - Comprehensive unit tests in `tests/unit/test_transcription_session.py` with 100% coverage
+
 - **TTS Module Enhanced Test Coverage** - Expanded unit test suite to achieve 93%+ coverage (issue #16):
   - **Convenience function tests**: Added tests for module-level convenience functions (`synthesize_text`, `synthesize_to_file`, `synthesize_text_sync`, `synthesize_to_file_sync`) in `test_tts_openai_provider.py`
   - **Edge case coverage**: Added tests for Unicode text, very long text (10,000 chars), and whitespace-only input validation
