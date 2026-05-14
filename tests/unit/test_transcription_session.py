@@ -7,7 +7,7 @@ import uuid
 from unittest.mock import AsyncMock, MagicMock, patch, PropertyMock, call
 from openai_apis.transcription.ws_session import TranscriptionSession
 from openai_apis.transcription.config import TranscriptionConfig
-from openai_apis import SessionState, InvalidStateTransition, SessionAuditLog
+from openai_apis import SessionState, InvalidStateTransition, SessionAuditLog, VADConfig
 
 
 class MockWebSocket:
@@ -726,3 +726,261 @@ class TestAsyncContextManager:
         assert (SessionState.CREATED, SessionState.CONNECTING) in states_seen
         assert (SessionState.CONNECTING, SessionState.CONNECTED) in states_seen
         assert (SessionState.CONNECTED, SessionState.DISCONNECTING) in states_seen
+
+
+class TestVADConfiguration:
+    """Test VAD configuration in session.update events."""
+
+    def test_vad_config_to_turn_detection_none(self):
+        """None VADConfig returns None (push-to-talk)."""
+        result = TranscriptionSession._vad_config_to_turn_detection(None)
+        assert result is None
+
+    def test_vad_config_to_turn_detection_disabled(self):
+        """Disabled mode returns None."""
+        vad = VADConfig(mode="disabled")
+        result = TranscriptionSession._vad_config_to_turn_detection(vad)
+        assert result is None
+
+    def test_vad_config_to_turn_detection_server_vad(self):
+        """server_vad mode returns correct dict."""
+        vad = VADConfig(
+            mode="server_vad",
+            threshold=0.7,
+            prefix_padding_ms=200,
+            silence_duration_ms=800,
+        )
+        result = TranscriptionSession._vad_config_to_turn_detection(vad)
+        assert result == {
+            "type": "server_vad",
+            "threshold": 0.7,
+            "prefix_padding_ms": 200,
+            "silence_duration_ms": 800,
+        }
+
+    def test_vad_config_to_turn_detection_semantic_vad(self):
+        """semantic_vad mode returns correct dict."""
+        vad = VADConfig(mode="semantic_vad", eagerness="high")
+        result = TranscriptionSession._vad_config_to_turn_detection(vad)
+        assert result == {
+            "type": "semantic_vad",
+            "eagerness": "high",
+        }
+
+    @pytest.mark.asyncio
+    async def test_session_update_with_server_vad(self):
+        """session.update includes server_vad turn_detection when configured."""
+        vad = VADConfig(mode="server_vad", threshold=0.6, silence_duration_ms=600)
+        config = TranscriptionConfig(api_key="test-key", vad_config=vad)
+        session = TranscriptionSession(config=config)
+
+        mock_ws = MockWebSocket(
+            messages=[
+                json.dumps({"type": "session.created", "session": {}}),
+                json.dumps({"type": "session.updated", "session": {}}),
+            ]
+        )
+
+        with patch(
+            "openai_apis.transcription.ws_session.websockets.connect",
+            new_callable=AsyncMock,
+        ) as mock_connect:
+            mock_connect.return_value = mock_ws
+
+            async with session:
+                sent_messages = [json.loads(msg) for msg in mock_ws.sent_messages]
+                session_update = next(
+                    (msg for msg in sent_messages if msg["type"] == "session.update"),
+                    None,
+                )
+                assert session_update is not None
+                td = session_update["session"]["turn_detection"]
+                assert td["type"] == "server_vad"
+                assert td["threshold"] == 0.6
+                assert td["silence_duration_ms"] == 600
+
+    @pytest.mark.asyncio
+    async def test_session_update_with_semantic_vad(self):
+        """session.update includes semantic_vad turn_detection when configured."""
+        vad = VADConfig(mode="semantic_vad", eagerness="low")
+        config = TranscriptionConfig(api_key="test-key", vad_config=vad)
+        session = TranscriptionSession(config=config)
+
+        mock_ws = MockWebSocket(
+            messages=[
+                json.dumps({"type": "session.created", "session": {}}),
+                json.dumps({"type": "session.updated", "session": {}}),
+            ]
+        )
+
+        with patch(
+            "openai_apis.transcription.ws_session.websockets.connect",
+            new_callable=AsyncMock,
+        ) as mock_connect:
+            mock_connect.return_value = mock_ws
+
+            async with session:
+                sent_messages = [json.loads(msg) for msg in mock_ws.sent_messages]
+                session_update = next(
+                    (msg for msg in sent_messages if msg["type"] == "session.update"),
+                    None,
+                )
+                assert session_update is not None
+                td = session_update["session"]["turn_detection"]
+                assert td["type"] == "semantic_vad"
+                assert td["eagerness"] == "low"
+
+    @pytest.mark.asyncio
+    async def test_session_update_with_disabled_vad(self):
+        """session.update has turn_detection=null when VAD disabled."""
+        vad = VADConfig(mode="disabled")
+        config = TranscriptionConfig(api_key="test-key", vad_config=vad)
+        session = TranscriptionSession(config=config)
+
+        mock_ws = MockWebSocket(
+            messages=[
+                json.dumps({"type": "session.created", "session": {}}),
+                json.dumps({"type": "session.updated", "session": {}}),
+            ]
+        )
+
+        with patch(
+            "openai_apis.transcription.ws_session.websockets.connect",
+            new_callable=AsyncMock,
+        ) as mock_connect:
+            mock_connect.return_value = mock_ws
+
+            async with session:
+                sent_messages = [json.loads(msg) for msg in mock_ws.sent_messages]
+                session_update = next(
+                    (msg for msg in sent_messages if msg["type"] == "session.update"),
+                    None,
+                )
+                assert session_update is not None
+                assert session_update["session"]["turn_detection"] is None
+
+    @pytest.mark.asyncio
+    async def test_session_update_default_no_vad(self):
+        """Default config (no vad_config) sends turn_detection=null."""
+        config = TranscriptionConfig(api_key="test-key")
+        session = TranscriptionSession(config=config)
+
+        mock_ws = MockWebSocket(
+            messages=[
+                json.dumps({"type": "session.created", "session": {}}),
+                json.dumps({"type": "session.updated", "session": {}}),
+            ]
+        )
+
+        with patch(
+            "openai_apis.transcription.ws_session.websockets.connect",
+            new_callable=AsyncMock,
+        ) as mock_connect:
+            mock_connect.return_value = mock_ws
+
+            async with session:
+                sent_messages = [json.loads(msg) for msg in mock_ws.sent_messages]
+                session_update = next(
+                    (msg for msg in sent_messages if msg["type"] == "session.update"),
+                    None,
+                )
+                assert session_update is not None
+                assert session_update["session"]["turn_detection"] is None
+
+    @pytest.mark.asyncio
+    async def test_update_vad_runtime(self):
+        """update_vad sends a new session.update with turn_detection."""
+        config = TranscriptionConfig(api_key="test-key")
+        session = TranscriptionSession(config=config)
+
+        mock_ws = MockWebSocket(
+            messages=[
+                json.dumps({"type": "session.created", "session": {}}),
+                json.dumps({"type": "session.updated", "session": {}}),
+            ]
+        )
+
+        with patch(
+            "openai_apis.transcription.ws_session.websockets.connect",
+            new_callable=AsyncMock,
+        ) as mock_connect:
+            mock_connect.return_value = mock_ws
+
+            async with session:
+                new_vad = VADConfig(mode="semantic_vad", eagerness="high")
+                await session.update_vad(new_vad)
+
+                sent_messages = [json.loads(msg) for msg in mock_ws.sent_messages]
+                # The second session.update is the runtime VAD update
+                vad_updates = [
+                    msg for msg in sent_messages if msg["type"] == "session.update"
+                ]
+                assert len(vad_updates) == 2  # initial + runtime
+                td = vad_updates[1]["session"]["turn_detection"]
+                assert td["type"] == "semantic_vad"
+                assert td["eagerness"] == "high"
+
+    @pytest.mark.asyncio
+    async def test_update_vad_requires_connected_state(self):
+        """update_vad raises InvalidStateTransition if not CONNECTED."""
+        session = TranscriptionSession()
+        vad = VADConfig(mode="server_vad")
+
+        with pytest.raises(InvalidStateTransition):
+            await session.update_vad(vad)
+
+    @pytest.mark.asyncio
+    async def test_update_vad_audit_logging(self):
+        """update_vad logs vad.updated audit event."""
+        config = TranscriptionConfig(api_key="test-key")
+        session = TranscriptionSession(config=config)
+
+        mock_ws = MockWebSocket(
+            messages=[
+                json.dumps({"type": "session.created", "session": {}}),
+                json.dumps({"type": "session.updated", "session": {}}),
+            ]
+        )
+
+        with patch(
+            "openai_apis.transcription.ws_session.websockets.connect",
+            new_callable=AsyncMock,
+        ) as mock_connect:
+            mock_connect.return_value = mock_ws
+
+            async with session:
+                new_vad = VADConfig(mode="server_vad", threshold=0.8)
+                await session.update_vad(new_vad)
+
+                events = session.audit_log.events
+                event_types = [e.event_type for e in events]
+                assert "vad.updated" in event_types
+                vad_event = next(
+                    e for e in events if e.event_type == "vad.updated"
+                )
+                assert vad_event.data["mode"] == "server_vad"
+
+    @pytest.mark.asyncio
+    async def test_update_vad_updates_config(self):
+        """update_vad updates the internal config's vad_config."""
+        config = TranscriptionConfig(api_key="test-key")
+        session = TranscriptionSession(config=config)
+
+        mock_ws = MockWebSocket(
+            messages=[
+                json.dumps({"type": "session.created", "session": {}}),
+                json.dumps({"type": "session.updated", "session": {}}),
+            ]
+        )
+
+        with patch(
+            "openai_apis.transcription.ws_session.websockets.connect",
+            new_callable=AsyncMock,
+        ) as mock_connect:
+            mock_connect.return_value = mock_ws
+
+            async with session:
+                assert session._config.vad_config is None
+                new_vad = VADConfig(mode="semantic_vad", eagerness="medium")
+                await session.update_vad(new_vad)
+                assert session._config.vad_config == new_vad
