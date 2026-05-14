@@ -9,6 +9,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Delta Event Streaming with Typed Callbacks** - Implemented streaming transcript events for Realtime API (issue #20):
+  - **Typed event objects**: New `TranscriptDelta`, `TranscriptCompleted`, and `ErrorEvent` dataclasses in `openai_apis/realtime/events.py`
+  - **`TranscriptDelta`**: Partial transcription events (~200-500ms intervals) with `item_id`, `delta` text, and `accumulated` full text
+  - **`TranscriptCompleted`**: Final transcription with `item_id`, complete `transcript`, and `duration_ms` from first delta
+  - **`ErrorEvent`**: Error events with `code` and `message` fields
+  - **Delta text accumulation**: Per-item text accumulation via internal `_delta_accumulator` dict in `RealtimeVoiceAPI`
+  - **Event callback system**: New `session.on(event, callback)` method for registering typed event handlers
+    - `"transcript.delta"`: Receives `TranscriptDelta` for user input and assistant response deltas
+    - `"transcript.completed"`: Receives `TranscriptCompleted` when transcription finishes
+    - `"error"`: Receives `ErrorEvent` for error handling
+  - **Async-safe callback invocation**: `_emit_event()` method handles callback invocation with per-callback error isolation
+  - **Comprehensive audit logging**: All delta and completed events logged with `item_id`, text lengths, and duration metrics
+  - **WebSocket event handling**: Extended `_on_message()` to process `conversation.item.input_audio_transcription.delta` and `response.audio_transcript.delta` events
+  - **Duration tracking**: Automatic measurement from first delta to completion per `item_id`
+  - **Multiple callback support**: Multiple callbacks can be registered for the same event type
+  - **Robust error handling**: Failing callbacks don't block other callbacks from executing
+  - New exports: `TranscriptDelta`, `TranscriptCompleted`, `ErrorEvent` available from package root
+  - Comprehensive unit tests in `tests/unit/test_realtime_events.py` covering all event types, accumulation logic, and error scenarios
+
+### Added
+
 - **TranscriptionSession WebSocket Client** - Implemented async WebSocket client for real-time transcription via OpenAI Realtime API (issue #18):
   - **`TranscriptionSession` class**: New WebSocket-based session in `openai_apis/transcription/ws_session.py` inheriting from `BaseSession`
   - **Real-time audio streaming**: Send audio chunks via `send_audio()` with base64-encoded PCM16 format

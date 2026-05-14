@@ -1388,9 +1388,102 @@ state.clear()
 
 ---
 
+### Event Types
+
+Typed event objects for realtime streaming events.
+
+#### TranscriptDelta
+
+**Type:** `@dataclass`
+
+Partial transcription event emitted at ~200-500ms intervals during speech recognition.
+
+**Fields:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `item_id` | `str` | Unique identifier for the conversation item |
+| `delta` | `str` | Incremental text fragment for this update |
+| `accumulated` | `str` | Full text accumulated so far for this `item_id` |
+
+**Emitted for:**
+- User input transcription: `conversation.item.input_audio_transcription.delta`
+- Assistant response transcript: `response.audio_transcript.delta`
+
+**Usage:**
+
+```python
+from openai_apis import RealtimeVoiceAPI, TranscriptDelta
+
+def on_delta(event: TranscriptDelta):
+    print(f"Delta: {event.delta}")
+    print(f"Full text so far: {event.accumulated}")
+
+api = RealtimeVoiceAPI()
+api.on("transcript.delta", on_delta)
+```
+
+#### TranscriptCompleted
+
+**Type:** `@dataclass`
+
+Final transcription event emitted when a speech turn is completed.
+
+**Fields:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `item_id` | `str` | Unique identifier for the conversation item |
+| `transcript` | `str` | Complete final transcript text |
+| `duration_ms` | `float` | Time elapsed from first delta to completion (milliseconds) |
+
+**Emitted for:**
+- User input transcription complete: `conversation.item.input_audio_transcription.completed`
+- Assistant response transcript complete: `response.audio_transcript.done`
+
+**Usage:**
+
+```python
+from openai_apis import RealtimeVoiceAPI, TranscriptCompleted
+
+def on_completed(event: TranscriptCompleted):
+    print(f"Complete: {event.transcript}")
+    print(f"Duration: {event.duration_ms}ms")
+
+api = RealtimeVoiceAPI()
+api.on("transcript.completed", on_completed)
+```
+
+#### ErrorEvent
+
+**Type:** `@dataclass`
+
+Error event for realtime API errors.
+
+**Fields:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `code` | `str` | Error code from the API |
+| `message` | `str` | Human-readable error message |
+
+**Usage:**
+
+```python
+from openai_apis import RealtimeVoiceAPI, ErrorEvent
+
+def on_error(event: ErrorEvent):
+    print(f"Error {event.code}: {event.message}")
+
+api = RealtimeVoiceAPI()
+api.on("error", on_error)
+```
+
+---
+
 ### RealtimeVoiceAPI
 
-WebSocket-based realtime voice interaction API.
+WebSocket-based realtime voice interaction API with support for streaming transcript events.
 
 **Constructor:**
 
@@ -1425,6 +1518,53 @@ RealtimeVoiceAPI(
 - `ws` (`Optional[websocket.WebSocketApp]`): WebSocket connection (None until connected)
 
 #### Methods
+
+**`on(event: str, callback: Callable) -> None`**
+
+Register a callback for typed streaming events.
+
+- **Parameters:**
+  - `event` (`str`): Event name to listen for
+  - `callback` (`Callable`): Function to call when event occurs
+- **Returns:** `None`
+
+**Supported events:**
+
+| Event | Callback Signature | Description |
+|-------|-------------------|-------------|
+| `"transcript.delta"` | `(TranscriptDelta) -> None` | Partial transcript updates (~200-500ms intervals) |
+| `"transcript.completed"` | `(TranscriptCompleted) -> None` | Final transcript when speech turn completes |
+| `"error"` | `(ErrorEvent) -> None` | Error events from the API |
+
+**Features:**
+- Multiple callbacks can be registered for the same event
+- Callbacks are invoked synchronously in the WebSocket message handler thread
+- Each callback is wrapped in try/except to prevent one failing callback from blocking others
+- Callbacks receive typed event objects (not raw strings)
+
+**Example:**
+
+```python
+from openai_apis import RealtimeVoiceAPI, TranscriptDelta, TranscriptCompleted
+
+api = RealtimeVoiceAPI()
+
+# Register delta callback for streaming transcripts
+def on_delta(event: TranscriptDelta):
+    print(f"[{event.item_id}] +{event.delta}")
+
+api.on("transcript.delta", on_delta)
+
+# Register completion callback
+def on_complete(event: TranscriptCompleted):
+    print(f"Final: {event.transcript} ({event.duration_ms:.0f}ms)")
+
+api.on("transcript.completed", on_complete)
+
+# Register multiple callbacks for the same event
+api.on("transcript.delta", lambda e: log_to_file(e))
+api.on("transcript.delta", lambda e: update_ui(e))
+```
 
 **`set_output_device(device_index: int) -> None`**
 
@@ -1503,6 +1643,77 @@ print(sd.query_devices())
 
 api = RealtimeVoiceAPI()
 api.set_output_device(2)  # Use device index 2
+api.run_session_sync()
+```
+
+**Streaming transcript events with delta callbacks:**
+
+```python
+from openai_apis import (
+    RealtimeVoiceAPI,
+    TranscriptDelta,
+    TranscriptCompleted,
+    ErrorEvent
+)
+
+# Create API instance
+api = RealtimeVoiceAPI()
+
+# Track streaming transcripts with deltas
+def on_transcript_delta(event: TranscriptDelta):
+    """Called every ~200-500ms with partial transcript."""
+    print(f"\r[Streaming] {event.accumulated}", end="", flush=True)
+
+api.on("transcript.delta", on_transcript_delta)
+
+# Handle completed transcripts
+def on_transcript_completed(event: TranscriptCompleted):
+    """Called when speech turn completes."""
+    print(f"\n[Complete] {event.transcript}")
+    print(f"Duration: {event.duration_ms:.0f}ms")
+
+api.on("transcript.completed", on_transcript_completed)
+
+# Handle errors
+def on_api_error(event: ErrorEvent):
+    """Called on API errors."""
+    print(f"\n[Error {event.code}] {event.message}")
+
+api.on("error", on_api_error)
+
+# Run session with streaming callbacks
+api.run_session_sync()
+```
+
+**Multiple callbacks for real-time processing:**
+
+```python
+from openai_apis import RealtimeVoiceAPI, TranscriptDelta
+import logging
+
+api = RealtimeVoiceAPI()
+
+# Callback 1: Update UI
+def update_display(event: TranscriptDelta):
+    display.update_text(event.accumulated)
+
+# Callback 2: Log to file
+def log_transcript(event: TranscriptDelta):
+    logging.info(f"Transcript delta: {event.delta}")
+
+# Callback 3: Send to analytics
+def track_metrics(event: TranscriptDelta):
+    analytics.track("transcript_delta", {
+        "item_id": event.item_id,
+        "length": len(event.accumulated)
+    })
+
+# Register all callbacks for the same event
+api.on("transcript.delta", update_display)
+api.on("transcript.delta", log_transcript)
+api.on("transcript.delta", track_metrics)
+
+# All three callbacks will be called for each delta event
 api.run_session_sync()
 ```
 
@@ -2056,6 +2267,10 @@ from openai_apis import (
     RealtimeVoiceAPI,
     RealtimeConfig,
     RealtimeAgentState,
+    # Event types for streaming callbacks
+    TranscriptDelta,
+    TranscriptCompleted,
+    ErrorEvent,
 )
 
 # Submodule imports also supported
@@ -2063,6 +2278,16 @@ from openai_apis.realtime import (
     RealtimeVoiceAPI,
     RealtimeConfig,
     RealtimeAgentState,
+    TranscriptDelta,
+    TranscriptCompleted,
+    ErrorEvent,
+)
+
+# Event types can also be imported from the events module
+from openai_apis.realtime.events import (
+    TranscriptDelta,
+    TranscriptCompleted,
+    ErrorEvent,
 )
 ```
 

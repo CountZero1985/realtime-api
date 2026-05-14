@@ -250,6 +250,40 @@ api = RealtimeVoiceAPI(
 api.run_session_sync()
 ```
 
+**Streaming transcript events with delta callbacks:**
+
+```python
+from openai_apis import (
+    RealtimeVoiceAPI,
+    TranscriptDelta,
+    TranscriptCompleted,
+    ErrorEvent
+)
+
+api = RealtimeVoiceAPI()
+
+# Register callback for streaming transcript deltas (~200-500ms intervals)
+def on_delta(event: TranscriptDelta):
+    print(f"\r[Streaming] {event.accumulated}", end="", flush=True)
+
+api.on("transcript.delta", on_delta)
+
+# Register callback for completed transcripts
+def on_completed(event: TranscriptCompleted):
+    print(f"\n[Final] {event.transcript} ({event.duration_ms:.0f}ms)")
+
+api.on("transcript.completed", on_completed)
+
+# Register error handler
+def on_error(event: ErrorEvent):
+    print(f"\n[Error {event.code}] {event.message}")
+
+api.on("error", on_error)
+
+# Run session with streaming callbacks
+api.run_session_sync()
+```
+
 ### Session Lifecycle Management
 
 All API sessions inherit from `BaseSession`, which provides automatic lifecycle management:
