@@ -177,7 +177,11 @@ class RealtimeVoiceAPI:
         log_audit_event(
             event_type="realtime_init",
             action="realtime_api_initialized",
-            details={"model": self.config.model, "language": self.config.language}
+            details={
+                "model": self.config.model,
+                "language": self.config.language,
+                "keywords": self.config.keywords
+            }
         )
 
     def set_output_device(self, device_index: int) -> None:
@@ -322,7 +326,11 @@ class RealtimeVoiceAPI:
                     event_type="realtime_session",
                     action="session_configured",
                     session_id=self._session_id,
-                    details={"language": self.config.language, "voice": self.config.voice}
+                    details={
+                        "language": self.config.language,
+                        "voice": self.config.voice,
+                        "keywords": self.config.keywords
+                    }
                 )
 
         elif event_type == "session.updated" and self._session_configured.is_set() and not self._session_ready.is_set():
