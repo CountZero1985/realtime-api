@@ -47,7 +47,7 @@ from openai_apis.realtime.config import RealtimeConfig
 from openai_apis.realtime.tools import ToolRegistry
 from openai_apis.realtime.events import (
     TranscriptDelta, TranscriptCompleted, ErrorEvent,
-    AudioDelta, AudioDone,
+    AudioDelta, AudioDone, ConversationItem,
 )
 
 
@@ -139,6 +139,10 @@ class RealtimeSession(BaseSession):
         # Input audio counters for audit
         self._input_audio_chunks: int = 0
         self._input_audio_bytes: int = 0
+        # Conversation history tracking
+        self._conversation_history: list[ConversationItem] = []
+        # Track current in-progress response for interruption
+        self._current_response_id: Optional[str] = None
 
     @property
     def agent_state(self) -> RealtimeAgentState:
