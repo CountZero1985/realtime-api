@@ -60,7 +60,7 @@ from openai_apis.realtime import (
 )
 from openai_apis.realtime.events import (
     TranscriptDelta, TranscriptCompleted, ErrorEvent,
-    AudioDelta, AudioDone,
+    AudioDelta, AudioDone, ConversationItem,
 )
 
 # MCP (M4)
@@ -112,6 +112,7 @@ __all__ = [
     "ErrorEvent",
     "AudioDelta",
     "AudioDone",
+    "ConversationItem",
     # MCP
     "MCPPlugin",
     "MCPPluginManager",

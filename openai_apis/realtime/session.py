@@ -47,7 +47,7 @@ from openai_apis.realtime.config import RealtimeConfig
 from openai_apis.realtime.tools import ToolRegistry
 from openai_apis.realtime.events import (
     TranscriptDelta, TranscriptCompleted, ErrorEvent,
-    AudioDelta, AudioDone,
+    AudioDelta, AudioDone, ConversationItem,
 )
 
 
@@ -93,7 +93,10 @@ class RealtimeSession(BaseSession):
         - "transcript.output": Output transcription (TranscriptCompleted)
         - "transcript.delta": Partial transcription (TranscriptDelta)
         - "tool.call": Tool/function call request from model (dict)
-        - "response.done": Response generation complete (dict)
+        - "response.created": Response generation started (dict with id)
+        - "response.done": Response generation complete (dict with response_id, status)
+        - "response.interrupted": Response was interrupted by user speech (dict with response_id, trigger)
+        - "input_audio_buffer.speech_started": VAD detected user speech start (dict)
         - "error": Error from server (ErrorEvent)
         - "session.created": Server session created (dict)
         - "session.updated": Server session configured (dict)
@@ -139,6 +142,10 @@ class RealtimeSession(BaseSession):
         # Input audio counters for audit
         self._input_audio_chunks: int = 0
         self._input_audio_bytes: int = 0
+        # Conversation history tracking
+        self._conversation_history: list[ConversationItem] = []
+        # Track current in-progress response for interruption
+        self._current_response_id: Optional[str] = None
 
     @property
     def agent_state(self) -> RealtimeAgentState:
@@ -275,6 +282,25 @@ class RealtimeSession(BaseSession):
         await self._send_event(event)
         self._audit_log.log("response.create_sent", {})
 
+    async def cancel_response(self) -> None:
+        """Cancel the current in-progress response (barge-in).
+
+        Sends a `response.cancel` event to the server. The server will
+        stop generating audio/text and emit `response.done` with status "cancelled".
+
+        Raises:
+            InvalidStateTransition: If not in CONNECTED state.
+
+        Audit Logging:
+            Logs 'response.cancel_sent' event with response_id if available.
+        """
+        self._assert_connected("cancel_response")
+        event: dict[str, Any] = {"type": "response.cancel"}
+        await self._send_event(event)
+        self._audit_log.log("response.cancel_sent", {
+            "response_id": self._current_response_id,
+        })
+
     async def update_session(self, **kwargs) -> None:
         """Update session configuration at runtime.
 
@@ -313,6 +339,30 @@ class RealtimeSession(BaseSession):
         }
         await self._send_event(event)
         self._audit_log.log("tool.result_sent", {"call_id": call_id})
+
+    def get_conversation_history(self) -> list[dict[str, str]]:
+        """Get conversation history as a list of role/content dicts.
+
+        Returns:
+            List of dicts with "role" and "content" keys, e.g.:
+            [{"role": "user", "content": "Hello"}, {"role": "assistant", "content": "Hi!"}]
+        """
+        return [
+            {"role": item.role, "content": item.content}
+            for item in self._conversation_history
+        ]
+
+    async def clear_conversation(self) -> None:
+        """Clear the in-memory conversation history.
+
+        Resets the tracked conversation items list to empty.
+
+        Audit Logging:
+            Logs 'conversation.cleared' event with item count before clearing.
+        """
+        count = len(self._conversation_history)
+        self._conversation_history.clear()
+        self._audit_log.log("conversation.cleared", {"items_cleared": count})
 
     async def _execute_tool(self, call_id: str, name: str, arguments: str) -> None:
         """Execute a tool from the registry, send result, and trigger response.
@@ -439,6 +489,12 @@ class RealtimeSession(BaseSession):
             self._emit("transcript.input", TranscriptCompleted(
                 item_id=item_id, transcript=transcript, duration_ms=duration_ms,
             ))
+            # Track in conversation history
+            self._conversation_history.append(ConversationItem(
+                role="user",
+                content=transcript,
+                item_id=item_id,
+            ))
 
         # Output transcription (model speech as text)
         elif event_type == "response.audio_transcript.delta":
@@ -455,6 +511,12 @@ class RealtimeSession(BaseSession):
             duration_ms = self._complete_accumulation(item_id)
             self._emit("transcript.output", TranscriptCompleted(
                 item_id=item_id, transcript=transcript, duration_ms=duration_ms,
+            ))
+            # Track in conversation history
+            self._conversation_history.append(ConversationItem(
+                role="assistant",
+                content=transcript,
+                item_id=item_id,
             ))
 
         # Audio response
@@ -522,8 +584,33 @@ class RealtimeSession(BaseSession):
                 )
 
         # Response lifecycle
+        elif event_type == "response.created":
+            response = event.get("response", {})
+            self._current_response_id = response.get("id")
+            self._emit("response.created", response)
+
         elif event_type == "response.done":
-            self._emit("response.done", {"response_id": event.get("response_id", "")})
+            response = event.get("response", {})
+            response_id = response.get("id", event.get("response_id", ""))
+            status = response.get("status", "")
+            self._current_response_id = None
+            self._emit("response.done", {
+                "response_id": response_id,
+                "status": status,
+            })
+
+        # VAD-based interruption detection
+        elif event_type == "input_audio_buffer.speech_started":
+            if self._current_response_id is not None:
+                self._audit_log.log("response.interrupted", {
+                    "response_id": self._current_response_id,
+                    "trigger": "vad_speech_started",
+                })
+                self._emit("response.interrupted", {
+                    "response_id": self._current_response_id,
+                    "trigger": "vad_speech_started",
+                })
+            self._emit("input_audio_buffer.speech_started", event)
 
         # Errors
         elif event_type == "error":

@@ -99,6 +99,9 @@ examples/               # Standalone example applications
 - Push-to-talk audio streaming
 - Real-time audio playback
 - Event-driven callbacks
+- **Response interruption (barge-in)**: Cancel in-progress responses via `cancel_response()` method
+- **Conversation history tracking**: Automatic tracking of user/assistant transcripts via `get_conversation_history()` and `clear_conversation()` methods
+- **VAD-based auto-interruption detection**: Automatic detection and logging when user speech interrupts assistant response
 
 ## Example Applications
 
@@ -436,5 +439,5 @@ For detailed API reference and architecture information, see:
 
 ### Known Issues
 - `OPENAI_API_KEY` loaded but not validated for None in some edge cases
-- Session memory management not implemented (conversation history truncation needed for realtime)
-- Response interruption not yet implemented in realtime mode
+- Session memory management not implemented (automatic conversation history truncation needed for realtime)
+  - Manual management available via `clear_conversation()` method

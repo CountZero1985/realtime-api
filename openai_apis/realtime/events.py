@@ -55,3 +55,14 @@ class AudioDone:
     """
     item_id: str
     response_id: str
+
+
+@dataclass
+class ConversationItem:
+    """A conversation history entry with role and content.
+
+    Tracked automatically from completed transcription events.
+    """
+    role: str          # "user" or "assistant"
+    content: str       # Transcript text
+    item_id: str       # OpenAI conversation item ID
