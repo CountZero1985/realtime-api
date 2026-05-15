@@ -24,6 +24,7 @@ Complete API reference for the `openai_apis` Python package, covering transcript
   - [ElevenLabsTTSProvider](#elevenlabsttsprovider)
 - [Realtime Voice API](#realtime-voice-api)
   - [RealtimeConfig](#realtimeconfig)
+  - [ToolRegistry](#toolregistry)
   - [RealtimeAgentState](#realtimeagentstate)
   - [RealtimeSession](#realtimesession)
 - [Session Infrastructure](#session-infrastructure)
@@ -1389,7 +1390,7 @@ Configuration for Realtime API sessions. Extends `BaseConfig`.
 | `max_response_output_tokens` | `Union[int, str]` | `"inf"` | Max output tokens ("inf" or positive integer) |
 | `input_audio_transcription` | `bool` | `True` | Whether to request input audio transcription |
 | `modalities` | `list[str]` | `["audio", "text"]` | Enabled modalities (["audio", "text"]) |
-| `tools` | `list[dict]` | `[]` | Tool definitions (JSON Schema format for function calling) |
+| `tools` | `Union[list[dict], ToolRegistry]` | `[]` | Tool definitions (JSON Schema format) or ToolRegistry instance for automatic execution |
 
 Plus all fields from `BaseConfig` (`api_key`, `timeout`, `audio_format`).
 
@@ -1435,7 +1436,7 @@ config = RealtimeConfig(
 # Text-only mode (no audio)
 config = RealtimeConfig(modalities=["text"])
 
-# With function calling tools
+# With function calling tools (raw format)
 tools = [
     {
         "type": "function",
@@ -1451,6 +1452,24 @@ tools = [
     }
 ]
 config = RealtimeConfig(tools=tools)
+
+# With ToolRegistry for automatic execution (recommended)
+from openai_apis import ToolRegistry
+
+registry = ToolRegistry()
+registry.register(
+    name="get_weather",
+    description="Get current weather for a location",
+    parameters={
+        "type": "object",
+        "properties": {
+            "location": {"type": "string"}
+        },
+        "required": ["location"]
+    },
+    handler=lambda location: {"temp": 22, "conditions": "sunny"}
+)
+config = RealtimeConfig(tools=registry)
 
 # Disable input transcription (audio-only mode)
 config = RealtimeConfig(input_audio_transcription=False)
@@ -1493,6 +1512,184 @@ event = config.to_session_update()
 #     }
 # }
 ```
+
+---
+
+### ToolRegistry
+
+Registry for tool/function definitions used with Realtime API sessions. Enables registering tools with JSON Schema parameters and handler functions, automatic conversion to API format, and automatic execution when tool calls arrive.
+
+**Type:** Class
+
+#### Constructor
+
+```python
+ToolRegistry()
+```
+
+Creates an empty tool registry.
+
+#### Methods
+
+**`register(name: str, description: str, parameters: dict, handler: Callable) -> None`**
+
+Register a tool with JSON Schema parameters and handler function.
+
+- **Parameters:**
+  - `name` (`str`): Unique tool name. Must not be empty or already registered.
+  - `description` (`str`): Human-readable description of what the tool does.
+  - `parameters` (`dict`): JSON Schema object describing the tool's parameters (must include "type": "object").
+  - `handler` (`Callable`): Function that executes the tool. Can be sync or async. Receives keyword arguments matching the parameters schema.
+- **Raises:**
+  - `ValueError`: If name is empty or already registered.
+
+**`to_api_format() -> list[dict]`**
+
+Convert all tool definitions to OpenAI Realtime API format.
+
+- **Returns:** `list[dict]` - List of tool definitions. Each entry has `{"type": "function", "name": ..., "description": ..., "parameters": ...}`.
+
+**`async execute(name: str, arguments: str) -> str`**
+
+Execute a registered tool handler. Parses JSON arguments, calls the handler (sync or async), and returns the result as a JSON string.
+
+- **Parameters:**
+  - `name` (`str`): Name of the registered tool.
+  - `arguments` (`str`): JSON string of arguments to pass to the handler.
+- **Returns:** `str` - JSON string of the handler's return value.
+- **Raises:**
+  - `KeyError`: If the tool name is not registered.
+  - `json.JSONDecodeError`: If arguments is not valid JSON.
+
+#### Properties
+
+**`tool_names` (property) -> list[str]**
+
+List all registered tool names (sorted alphabetically).
+
+#### Special Methods
+
+**`__len__() -> int`**
+
+Return the number of registered tools.
+
+**`__bool__() -> bool`**
+
+Return True if any tools are registered, False otherwise.
+
+#### Usage
+
+**Basic registration and use:**
+
+```python
+from openai_apis import ToolRegistry, RealtimeConfig, RealtimeSession
+
+# Create registry
+tools = ToolRegistry()
+
+# Register a sync handler
+def get_weather(city: str) -> dict:
+    return {"city": city, "temp": 22, "conditions": "sunny"}
+
+tools.register(
+    name="get_weather",
+    description="Get current weather for a city",
+    parameters={
+        "type": "object",
+        "properties": {
+            "city": {"type": "string", "description": "City name"}
+        },
+        "required": ["city"]
+    },
+    handler=get_weather
+)
+
+# Register an async handler
+async def web_search(query: str) -> dict:
+    # Perform actual search...
+    return {"query": query, "results": [...]}
+
+tools.register(
+    name="web_search",
+    description="Search the web for information",
+    parameters={
+        "type": "object",
+        "properties": {
+            "query": {"type": "string", "description": "Search query"}
+        },
+        "required": ["query"]
+    },
+    handler=web_search
+)
+
+# Check registered tools
+print(tools.tool_names)  # ["get_weather", "web_search"]
+print(len(tools))        # 2
+print(bool(tools))       # True
+```
+
+**Integration with RealtimeSession:**
+
+```python
+from openai_apis import ToolRegistry, RealtimeConfig, RealtimeSession
+
+# Configure session with tools
+config = RealtimeConfig(tools=tools)
+
+async with RealtimeSession(config) as session:
+    # Tool calls from the model are automatically executed
+    # Results are sent back to the model
+    # Model continues the conversation with tool results
+
+    # Tool executions are logged in audit trail
+    events = session.audit_log.events
+    tool_events = [e for e in events if e.event_type.startswith("tool.")]
+
+    for event in tool_events:
+        print(f"{event.event_type}: {event.data}")
+        # tool.execution.started: {"call_id": "...", "name": "get_weather", ...}
+        # tool.execution.completed: {"call_id": "...", "result": "{...}", ...}
+```
+
+**Error handling:**
+
+```python
+# If a tool handler raises an exception, it's caught and logged
+def failing_tool() -> dict:
+    raise ValueError("Something went wrong")
+
+tools.register("failing_tool", "A tool that fails", {}, failing_tool)
+
+# When the model calls this tool:
+# 1. Exception is caught
+# 2. Logged to audit trail with "tool.execution.failed" event
+# 3. Error result is sent to model: {"error": "Something went wrong"}
+# 4. Model can handle the error gracefully and continue
+```
+
+**Manual execution (for testing):**
+
+```python
+import asyncio
+
+# Execute a tool manually
+result = await tools.execute("get_weather", '{"city": "Budapest"}')
+print(result)  # '{"city": "Budapest", "temp": 22, "conditions": "sunny"}'
+
+# Test with invalid tool name
+try:
+    await tools.execute("unknown_tool", "{}")
+except KeyError as e:
+    print(e)  # "Unknown tool: 'unknown_tool'. Available: get_weather, web_search"
+```
+
+**Audit logging:**
+
+When a ToolRegistry is provided to RealtimeSession, tool executions are automatically logged with the following event types:
+
+- `tool.execution.started`: Tool execution begins (includes `call_id`, `name`, `arguments`)
+- `tool.execution.completed`: Tool execution succeeds (includes `call_id`, `name`, `result`, `duration_ms`)
+- `tool.execution.failed`: Tool execution fails (includes `call_id`, `name`, `error`, `duration_ms`)
 
 ---
 
@@ -2583,6 +2780,7 @@ from openai_apis import (
     RealtimeVoiceAPI,    # backward-compatible alias for RealtimeSession
     RealtimeConfig,
     RealtimeAgentState,
+    ToolRegistry,        # Tool/function calling registry
     # Event types for streaming callbacks
     AudioDelta,
     AudioDone,
@@ -2597,6 +2795,7 @@ from openai_apis.realtime import (
     RealtimeVoiceAPI,    # backward-compatible alias
     RealtimeConfig,
     RealtimeAgentState,
+    ToolRegistry,        # Tool/function calling registry
     AudioDelta,
     AudioDone,
     TranscriptDelta,

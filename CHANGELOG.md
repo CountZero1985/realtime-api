@@ -9,6 +9,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **ToolRegistry for Realtime API** - Implemented comprehensive tool/function calling registry system (issue #28):
+  - **`ToolRegistry` class**: New registry in `openai_apis/realtime/tools.py` for managing tool definitions and handlers
+  - **Tool registration**: `register(name, description, parameters, handler)` method for registering tools with JSON Schema parameters
+  - **API format conversion**: `to_api_format()` method converts tool definitions to OpenAI Realtime API format
+  - **Automatic execution**: `execute(name, arguments)` method handles tool execution with support for both sync and async handlers
+  - **RealtimeConfig integration**: `tools` field now accepts `ToolRegistry | list[dict]` with automatic conversion to API format
+  - **RealtimeSession auto-execution**: When `ToolRegistry` is provided via config, tool calls are automatically executed, results are sent back, and responses are triggered
+  - **Comprehensive audit logging**: Tool execution logged with `tool.execution.started`, `tool.execution.completed`, and `tool.execution.failed` events including duration metrics
+  - **Helper properties**: `tool_names` (sorted list), `__len__`, `__bool__` for convenient registry inspection
+  - **Error handling**: Failed tool executions are caught, logged, and error results are sent back to the model for graceful recovery
+  - Exported from package root: `from openai_apis import ToolRegistry`
+  - Comprehensive unit tests in `tests/unit/test_realtime_tools.py` covering registration, API format conversion, execution (sync/async), config integration, session integration, and audit logging
+
+### Added
+
 - **Audio Streaming with Typed Events** - Enhanced realtime audio streaming with typed event objects and comprehensive audit logging (issue #27):
   - **Typed audio events**: New `AudioDelta` and `AudioDone` dataclasses in `openai_apis/realtime/events.py`
   - **`AudioDelta`**: Output audio chunk events with `audio_bytes` (decoded PCM16), `item_id`, and `response_id`

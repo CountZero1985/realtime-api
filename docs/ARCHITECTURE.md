@@ -79,8 +79,9 @@ openai_apis/
 └── realtime/               # Realtime voice API (M3)
     ├── __init__.py         # Public exports
     ├── config.py           # RealtimeConfig (extends BaseConfig)
-    ├── session.py          # RealtimeVoiceAPI (WebSocket realtime)
-    └── tools.py            # Agent tools for realtime sessions
+    ├── session.py          # RealtimeSession (WebSocket realtime)
+    ├── tools.py            # ToolRegistry (tool/function calling registry)
+    └── events.py           # Event types (AudioDelta, TranscriptDelta, etc.)
 
 examples/                   # Standalone example applications
 ├── agents/                 # Agent configurations for examples
@@ -677,6 +678,140 @@ audio = await provider.synthesize("Hello world")
 | `openai` | `OpenAITTSProvider` | OpenAI TTS (default) |
 
 Future providers can be added without modifying existing code, following the Open/Closed Principle.
+
+---
+
+## ToolRegistry Pattern
+
+The Realtime API module includes a `ToolRegistry` class for managing tool/function calling with automatic execution and audit logging.
+
+### Architecture
+
+```
+┌──────────────────────────────────────────────┐
+│ ToolRegistry                                 │
+│ - register(name, desc, params, handler)      │
+│ - to_api_format() → list[dict]               │
+│ - execute(name, arguments) → str             │
+│ - tool_names, __len__, __bool__              │
+└───────────────────┬──────────────────────────┘
+                    │
+                    │ used by
+                    ▼
+┌──────────────────────────────────────────────┐
+│ RealtimeConfig                               │
+│ tools: Union[list[dict], ToolRegistry]       │
+│                                              │
+│ to_session_update():                         │
+│   if isinstance(tools, ToolRegistry):        │
+│     session["tools"] = tools.to_api_format() │
+└───────────────────┬──────────────────────────┘
+                    │
+                    │ used by
+                    ▼
+┌──────────────────────────────────────────────┐
+│ RealtimeSession                              │
+│                                              │
+│ On tool call event:                          │
+│   1. Emit "tool.call" callback               │
+│   2. If ToolRegistry provided:               │
+│      - Execute tool handler (sync or async)  │
+│      - Send result back to model             │
+│      - Create response                       │
+│      - Log to audit trail                    │
+└──────────────────────────────────────────────┘
+```
+
+### Workflow
+
+1. **Registration**: Tools are registered with JSON Schema parameters and handler functions (sync or async)
+2. **API Conversion**: `to_api_format()` converts tools to OpenAI Realtime API format for session.update
+3. **Automatic Execution**: When a tool call arrives:
+   - RealtimeSession checks if ToolRegistry is available
+   - Executes the handler with parsed arguments
+   - Sends the result back to the model
+   - Triggers response generation
+   - Logs all steps to audit trail
+
+### Usage Example
+
+```python
+from openai_apis import ToolRegistry, RealtimeConfig, RealtimeSession
+
+# Step 1: Create registry and register tools
+tools = ToolRegistry()
+
+# Sync handler
+def get_weather(city: str) -> dict:
+    return {"city": city, "temp": 22, "conditions": "sunny"}
+
+tools.register(
+    name="get_weather",
+    description="Get current weather for a city",
+    parameters={
+        "type": "object",
+        "properties": {
+            "city": {"type": "string", "description": "City name"}
+        },
+        "required": ["city"]
+    },
+    handler=get_weather
+)
+
+# Async handler
+async def web_search(query: str) -> dict:
+    # Perform search...
+    return {"query": query, "results": [...]}
+
+tools.register(
+    name="web_search",
+    description="Search the web",
+    parameters={
+        "type": "object",
+        "properties": {
+            "query": {"type": "string"}
+        },
+        "required": ["query"]
+    },
+    handler=web_search
+)
+
+# Step 2: Configure session with tools
+config = RealtimeConfig(tools=tools)
+
+# Step 3: Use in session - tools are automatically executed
+async with RealtimeSession(config) as session:
+    # Model can call tools during conversation
+    # Results are automatically sent back
+    # No manual intervention needed
+
+    # Access audit log for tool execution events
+    events = session.audit_log.events
+    tool_events = [e for e in events if e.event_type.startswith("tool.")]
+```
+
+### Audit Events
+
+Tool executions are logged with the following event types:
+
+- **`tool.execution.started`**: Tool execution begins
+  - Data: `call_id`, `name`, `arguments`
+- **`tool.execution.completed`**: Tool execution succeeds
+  - Data: `call_id`, `name`, `result`
+  - Duration: Execution time in milliseconds
+- **`tool.execution.failed`**: Tool execution fails
+  - Data: `call_id`, `name`, `error`
+  - Duration: Time until failure in milliseconds
+
+### Error Handling
+
+When a tool handler raises an exception:
+1. Exception is caught and logged with `tool.execution.failed` event
+2. Error result is sent to model: `{"error": "exception message"}`
+3. Model can handle the error gracefully and continue the conversation
+4. Session remains active and functional
+
+This design ensures that tool failures don't crash the session and allows the model to recover from errors intelligently.
 
 ---
 
