@@ -95,6 +95,36 @@ python examples/realtime_websocket.py
 ```
 Direct WebSocket connection to OpenAI Realtime API with real-time audio streaming.
 
+**FastAPI Web Server:**
+```bash
+python examples/web_server/run.py
+```
+Production-ready FastAPI web server with REST and WebSocket endpoints for all three core APIs (TTS, Transcription, Realtime). Features:
+- **REST:** `POST /api/tts` for text-to-speech synthesis
+- **WebSocket:** `WS /ws/transcription` for streaming transcription
+- **WebSocket:** `WS /ws/realtime` for full-duplex voice conversation
+- **System:** `GET /api/health` and `GET /api/config` for monitoring and configuration
+
+Requires the `[web]` extra:
+```bash
+pip install -e ".[web]"
+# or
+uv sync --extra web
+```
+
+Start the server (default: http://localhost:8000):
+```bash
+python examples/web_server/run.py
+
+# Custom host/port
+python examples/web_server/run.py --host 0.0.0.0 --port 8080
+
+# With auto-reload for development
+python examples/web_server/run.py --reload
+```
+
+See **[docs/API.md - Web Server Example](docs/API.md#web-server-example-fastapi)** for complete endpoint documentation, usage examples, and production deployment guide.
+
 ## API Usage
 
 ### Transcription (Speech-to-Text)
@@ -532,6 +562,13 @@ examples/
 ├── utils/                   # Utility modules
 │   ├── audio_io.py         # Audio recording and playback (24kHz)
 │   └── time_format.py      # Hungarian time formatting
+├── web_server/              # FastAPI web server
+│   ├── app.py              # Application factory
+│   ├── routes/             # REST and WebSocket endpoints
+│   │   ├── tts.py          # POST /api/tts
+│   │   ├── transcription.py # WS /ws/transcription
+│   │   └── realtime.py     # WS /ws/realtime
+│   └── run.py              # Server entry point
 ├── cli_app.py              # CLI interface module
 ├── voice_pipeline.py       # Voice pipeline framework
 ├── cli_agent.py            # Example: text-based agent
