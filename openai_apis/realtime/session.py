@@ -305,29 +305,7 @@ class RealtimeSession(BaseSession):
         Returns:
             Dict containing session.update event structure.
         """
-        transcription_config = {
-            "model": self._config.transcription_model,
-            "language": self._config.language,
-        }
-        if self._config.keywords:
-            transcription_config["prompt"] = ", ".join(self._config.keywords)
-
-        return {
-            "type": "session.update",
-            "session": {
-                "modalities": self._config.modalities,
-                "instructions": self._config.instructions,
-                "voice": self._config.voice,
-                "input_audio_format": "pcm16",
-                "output_audio_format": "pcm16",
-                "input_audio_transcription": transcription_config,
-                "turn_detection": None,  # Push-to-talk (manual)
-                "temperature": self._config.temperature,
-                "max_response_output_tokens": self._config.max_response_output_tokens,
-                "speed": self._config.speed,
-                "tracing": "auto",
-            },
-        }
+        return self._config.to_session_update()
 
     async def _send_session_update(self) -> None:
         """Send session.update event during connection setup."""
