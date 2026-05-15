@@ -119,6 +119,11 @@ class TestRealtimeConfigMaxTokensValidation:
         with pytest.raises(ValueError, match="must be 'inf' or a positive integer"):
             RealtimeConfig(max_response_output_tokens="unlimited")
 
+    def test_non_int_non_str_type_rejected(self):
+        """Non-int, non-str types (e.g. float) are rejected."""
+        with pytest.raises(ValueError, match="must be 'inf' or a positive integer"):
+            RealtimeConfig(max_response_output_tokens=3.14)
+
 
 class TestRealtimeConfigModalitiesValidation:
     def test_default_modalities(self):
