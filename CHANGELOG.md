@@ -9,6 +9,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **RealtimeSession async WebSocket rewrite** - Replaced synchronous `RealtimeVoiceAPI` with async `RealtimeSession` inheriting from `BaseSession` (issue #25):
+  - **Architecture change**: New `RealtimeSession` class uses async `websockets` library instead of synchronous `websocket-client` + threading
+  - **BaseSession integration**: Full lifecycle management with state machine (CREATED → CONNECTING → CONNECTED → DISCONNECTING → CLOSED)
+  - **Async context manager**: Use `async with RealtimeSession() as session:` for automatic connection/disconnection
+  - **Pure protocol client**: Removed audio I/O (mic/speaker) from core library - now belongs in examples (matches TranscriptionSession pattern)
+  - **Async API methods**: `send_audio()`, `commit_audio()`, `create_response()`, `update_session()`, `send_tool_result()` are all async
+  - **Event-driven callbacks**: Register callbacks via `session.on(event, callback)` for all realtime events
+  - **Supported events**:
+    - `audio.delta`: Output audio chunk (bytes, base64-decoded)
+    - `audio.done`: Output audio stream complete
+    - `transcript.input`: Input transcription with `TranscriptCompleted` data
+    - `transcript.output`: Output transcription with `TranscriptCompleted` data
+    - `transcript.delta`: Partial transcription with `TranscriptDelta` data
+    - `tool.call`: Tool/function call request (dict with call_id, name, arguments)
+    - `response.done`: Response generation complete
+    - `error`: Error from server (`ErrorEvent`)
+    - `session.created`/`session.updated`: Server session lifecycle events
+  - **Automatic reconnection**: Exponential backoff with configurable max attempts and delay
+  - **Per-session audit logging**: All events logged via `session.audit_log` property
+  - **Backward compatibility**: `RealtimeVoiceAPI` maintained as alias for `RealtimeSession` in imports
+  - **Removed methods**: `run_session_sync()`, `set_output_device()` (application-level features moved to examples)
+  - **Breaking change**: Old synchronous API with built-in audio I/O is no longer available - users must migrate to async API
+  - Comprehensive unit tests in `tests/unit/test_realtime_session.py` covering lifecycle, API methods, event handling, and reconnection
+
+### Changed
+
 - **TranscriptionConfig modernization** - Updated `TranscriptionConfig` with new fields and validation (issue #19):
   - **Default model change**: Changed default `model` from `"gpt-4o-mini-transcribe"` to `"gpt-realtime-whisper"`
   - **New fields**: Added `vad` (VADConfig), `keywords` (list[str]), and `include_logprobs` (bool)

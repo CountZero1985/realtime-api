@@ -25,7 +25,7 @@ Complete API reference for the `openai_apis` Python package, covering transcript
 - [Realtime Voice API](#realtime-voice-api)
   - [RealtimeConfig](#realtimeconfig)
   - [RealtimeAgentState](#realtimeagentstate)
-  - [RealtimeVoiceAPI](#realtimevoiceapi)
+  - [RealtimeSession](#realtimesession)
 - [Session Infrastructure](#session-infrastructure)
   - [SessionState](#sessionstate)
   - [InvalidStateTransition](#invalidstatetransition)
@@ -121,22 +121,28 @@ api.synthesize_to_file_sync("Hello world!", "output.mp3")
 ### Realtime Voice (WebSocket)
 
 ```python
-from openai_apis import RealtimeVoiceAPI
+from openai_apis import RealtimeSession
+import asyncio
 
-def on_transcription(text):
-    print(f"User said: {text}")
+async def main():
+    async with RealtimeSession() as session:
+        # Define callbacks
+        def on_transcript(data):
+            print(f"User said: {data.transcript}")
 
-def on_response_text(text):
-    print(f"Assistant: {text}")
+        def on_audio(chunk: bytes):
+            # Process audio bytes
+            play_audio(chunk)
 
-# Initialize API with callbacks
-api = RealtimeVoiceAPI(
-    on_transcription=on_transcription,
-    on_response_text=on_response_text
-)
+        session.on("transcript.input", on_transcript)
+        session.on("audio.delta", on_audio)
 
-# Run interactive session (push-to-talk)
-api.run_session_sync()
+        # Send audio and trigger response
+        await session.send_audio(audio_chunk)
+        await session.commit_audio()
+        await session.create_response()
+
+asyncio.run(main())
 ```
 
 ---
@@ -1518,14 +1524,14 @@ Partial transcription event emitted at ~200-500ms intervals during speech recogn
 **Usage:**
 
 ```python
-from openai_apis import RealtimeVoiceAPI, TranscriptDelta
+from openai_apis import RealtimeSession, TranscriptDelta
 
-def on_delta(event: TranscriptDelta):
-    print(f"Delta: {event.delta}")
-    print(f"Full text so far: {event.accumulated}")
+async with RealtimeSession() as session:
+    def on_delta(event: TranscriptDelta):
+        print(f"Delta: {event.delta}")
+        print(f"Full text so far: {event.accumulated}")
 
-api = RealtimeVoiceAPI()
-api.on("transcript.delta", on_delta)
+    session.on("transcript.delta", on_delta)
 ```
 
 #### TranscriptCompleted
@@ -1549,14 +1555,15 @@ Final transcription event emitted when a speech turn is completed.
 **Usage:**
 
 ```python
-from openai_apis import RealtimeVoiceAPI, TranscriptCompleted
+from openai_apis import RealtimeSession, TranscriptCompleted
 
-def on_completed(event: TranscriptCompleted):
-    print(f"Complete: {event.transcript}")
-    print(f"Duration: {event.duration_ms}ms")
+async with RealtimeSession() as session:
+    def on_completed(event: TranscriptCompleted):
+        print(f"Complete: {event.transcript}")
+        print(f"Duration: {event.duration_ms}ms")
 
-api = RealtimeVoiceAPI()
-api.on("transcript.completed", on_completed)
+    session.on("transcript.input", on_completed)
+    session.on("transcript.output", on_completed)
 ```
 
 #### ErrorEvent
@@ -1575,58 +1582,51 @@ Error event for realtime API errors.
 **Usage:**
 
 ```python
-from openai_apis import RealtimeVoiceAPI, ErrorEvent
+from openai_apis import RealtimeSession, ErrorEvent
 
-def on_error(event: ErrorEvent):
-    print(f"Error {event.code}: {event.message}")
+async with RealtimeSession() as session:
+    def on_error(event: ErrorEvent):
+        print(f"Error {event.code}: {event.message}")
 
-api = RealtimeVoiceAPI()
-api.on("error", on_error)
+    session.on("error", on_error)
 ```
 
 ---
 
-### RealtimeVoiceAPI
+### RealtimeSession
 
-WebSocket-based realtime voice interaction API with support for streaming transcript events.
+Async WebSocket client for OpenAI Realtime API conversation sessions. Inherits from `BaseSession` for full lifecycle management, state machine, and per-session audit logging. Uses async context manager pattern for automatic connection/disconnection.
+
+**Note:** `RealtimeVoiceAPI` is maintained as a backward-compatible alias for `RealtimeSession`.
 
 **Constructor:**
 
 ```python
-RealtimeVoiceAPI(
+RealtimeSession(
     config: Optional[RealtimeConfig] = None,
     state: Optional[RealtimeAgentState] = None,
-    api_key: Optional[str] = None,
-    on_transcription: Optional[Callable[[str], None]] = None,
-    on_response_audio: Optional[Callable[[np.ndarray], None]] = None,
-    on_response_text: Optional[Callable[[str], None]] = None,
-    on_error: Optional[Callable[[str], None]] = None,
-    on_session_created: Optional[Callable[[str], None]] = None,
-    on_session_updated: Optional[Callable[[], None]] = None
+    max_reconnect_attempts: int = 3,
+    reconnect_delay: float = 1.0
 )
 ```
 
 **Parameters:**
-- `config` (`Optional[RealtimeConfig]`): Realtime configuration
-- `state` (`Optional[RealtimeAgentState]`): Custom state manager
-- `api_key` (`Optional[str]`): API key (defaults to OPENAI_API_KEY env var)
-- `on_transcription` (`Optional[Callable[[str], None]]`): Callback when user speech is transcribed
-- `on_response_audio` (`Optional[Callable[[np.ndarray], None]]`): Callback for response audio chunks
-- `on_response_text` (`Optional[Callable[[str], None]]`): Callback for response text transcript
-- `on_error` (`Optional[Callable[[str], None]]`): Callback for error handling
-- `on_session_created` (`Optional[Callable[[str], None]]`): Callback when session is created (receives session_id)
-- `on_session_updated` (`Optional[Callable[[], None]]`): Callback when session is updated/configured
+- `config` (`Optional[RealtimeConfig]`): Realtime configuration (defaults to `RealtimeConfig()`)
+- `state` (`Optional[RealtimeAgentState]`): Custom state manager (defaults to new `RealtimeAgentState()`)
+- `max_reconnect_attempts` (`int`): Maximum reconnection attempts on connection loss (default: 3)
+- `reconnect_delay` (`float`): Base delay in seconds for exponential backoff (default: 1.0)
 
 **Attributes:**
-- `config` (`RealtimeConfig`): Current configuration
-- `state` (`RealtimeAgentState`): State manager
-- `ws` (`Optional[websocket.WebSocketApp]`): WebSocket connection (None until connected)
+- `session_id` (`str`): Auto-generated UUID for session (inherited from `BaseSession`)
+- `state` (`SessionState`): Current session state (inherited from `BaseSession`)
+- `audit_log` (`SessionAuditLog`): Per-session audit log (inherited from `BaseSession`)
+- `agent_state` (`RealtimeAgentState`): State manager for tool outputs and custom state
 
 #### Methods
 
-**`on(event: str, callback: Callable) -> None`**
+**`on(event: str, callback: Callable) -> None`** *(inherited from BaseSession)*
 
-Register a callback for typed streaming events.
+Register a callback for session events.
 
 - **Parameters:**
   - `event` (`str`): Event name to listen for
@@ -1635,191 +1635,284 @@ Register a callback for typed streaming events.
 
 **Supported events:**
 
-| Event | Callback Signature | Description |
-|-------|-------------------|-------------|
-| `"transcript.delta"` | `(TranscriptDelta) -> None` | Partial transcript updates (~200-500ms intervals) |
-| `"transcript.completed"` | `(TranscriptCompleted) -> None` | Final transcript when speech turn completes |
-| `"error"` | `(ErrorEvent) -> None` | Error events from the API |
+| Event | Data Type | Description |
+|-------|-----------|-------------|
+| `"audio.delta"` | `bytes` | Output audio chunk (base64-decoded PCM16 bytes) |
+| `"audio.done"` | `dict` | Output audio stream complete (contains `response_id`) |
+| `"transcript.input"` | `TranscriptCompleted` | Input transcription (user speech as text) |
+| `"transcript.output"` | `TranscriptCompleted` | Output transcription (model speech as text) |
+| `"transcript.delta"` | `TranscriptDelta` | Partial transcription updates (~200-500ms intervals) |
+| `"tool.call"` | `dict` | Tool/function call request (contains `call_id`, `name`, `arguments`) |
+| `"response.done"` | `dict` | Response generation complete (contains `response_id`) |
+| `"error"` | `ErrorEvent` | Error events from the API |
+| `"session.created"` | `dict` | Server session created (contains session metadata) |
+| `"session.updated"` | `dict` | Server session configured (contains session metadata) |
+
+Plus inherited `BaseSession` events: `"session.created"`, `"state_changed"`, `"session.closed"`
 
 **Features:**
 - Multiple callbacks can be registered for the same event
-- Callbacks are invoked synchronously in the WebSocket message handler thread
+- Callbacks are invoked in the receive loop (async context)
 - Each callback is wrapped in try/except to prevent one failing callback from blocking others
-- Callbacks receive typed event objects (not raw strings)
+- Typed event objects for transcript events (`TranscriptDelta`, `TranscriptCompleted`, `ErrorEvent`)
 
 **Example:**
 
 ```python
-from openai_apis import RealtimeVoiceAPI, TranscriptDelta, TranscriptCompleted
+from openai_apis import RealtimeSession, TranscriptDelta, TranscriptCompleted
 
-api = RealtimeVoiceAPI()
+async with RealtimeSession() as session:
+    # Register delta callback for streaming transcripts
+    def on_delta(event: TranscriptDelta):
+        print(f"[{event.item_id}] +{event.delta}")
 
-# Register delta callback for streaming transcripts
-def on_delta(event: TranscriptDelta):
-    print(f"[{event.item_id}] +{event.delta}")
+    session.on("transcript.delta", on_delta)
 
-api.on("transcript.delta", on_delta)
+    # Register completion callback
+    def on_complete(event: TranscriptCompleted):
+        print(f"Final: {event.transcript} ({event.duration_ms:.0f}ms)")
 
-# Register completion callback
-def on_complete(event: TranscriptCompleted):
-    print(f"Final: {event.transcript} ({event.duration_ms:.0f}ms)")
+    session.on("transcript.input", on_complete)
 
-api.on("transcript.completed", on_complete)
+    # Register audio chunk callback
+    def on_audio(chunk: bytes):
+        # Process audio bytes
+        play_audio(chunk)
 
-# Register multiple callbacks for the same event
-api.on("transcript.delta", lambda e: log_to_file(e))
-api.on("transcript.delta", lambda e: update_ui(e))
+    session.on("audio.delta", on_audio)
 ```
 
-**`set_output_device(device_index: int) -> None`**
+**`async send_audio(chunk: bytes) -> None`**
 
-Set the audio output device for response playback.
+Send base64-encoded PCM16 audio chunk to the server.
 
 - **Parameters:**
-  - `device_index` (`int`): Device index from sounddevice.query_devices()
+  - `chunk` (`bytes`): Raw PCM16 audio bytes
+- **Returns:** `None`
+- **Raises:** `InvalidStateTransition` if not in CONNECTED state
 
-**`run_session_sync() -> None`**
+**`async commit_audio() -> None`**
 
-Run interactive realtime session (blocking). Uses push-to-talk: press Enter to start/stop recording.
+Commit audio buffer (push-to-talk mode). Signals end of user audio input, creating a conversation item.
 
 - **Returns:** `None`
-- **Raises:** Various exceptions if connection or audio I/O fails
+- **Raises:** `InvalidStateTransition` if not in CONNECTED state
+
+**`async create_response() -> None`**
+
+Trigger response generation from the model.
+
+- **Returns:** `None`
+- **Raises:** `InvalidStateTransition` if not in CONNECTED state
+
+**`async update_session(**kwargs) -> None`**
+
+Update session configuration at runtime.
+
+- **Parameters:**
+  - `**kwargs`: Session config fields to update (e.g., `voice="alloy"`, `temperature=0.9`, `instructions="..."`)
+- **Returns:** `None`
+- **Raises:** `InvalidStateTransition` if not in CONNECTED state
+
+**`async send_tool_result(call_id: str, result: str) -> None`**
+
+Send tool call result back to the model.
+
+- **Parameters:**
+  - `call_id` (`str`): The tool call ID from the `"tool.call"` event
+  - `result` (`str`): JSON string result of the tool invocation
+- **Returns:** `None`
+- **Raises:** `InvalidStateTransition` if not in CONNECTED state
 
 #### Usage Examples
 
 **Basic realtime session:**
 
 ```python
-from openai_apis import RealtimeVoiceAPI
+from openai_apis import RealtimeSession, RealtimeConfig
+import asyncio
 
-def on_transcription(text):
-    print(f"User: {text}")
+async def main():
+    config = RealtimeConfig(
+        voice="sage",
+        language="hu",
+        instructions="You are a helpful assistant."
+    )
 
-def on_response_text(text):
-    print(f"Assistant: {text}")
+    async with RealtimeSession(config) as session:
+        # Register callbacks
+        def on_transcript(data):
+            print(f"User: {data.transcript}")
 
-api = RealtimeVoiceAPI(
-    on_transcription=on_transcription,
-    on_response_text=on_response_text
-)
+        def on_audio(chunk: bytes):
+            # Process audio bytes (e.g., play to speaker)
+            play_audio(chunk)
 
-# Run interactive session (push-to-talk with Enter key)
-api.run_session_sync()
+        session.on("transcript.input", on_transcript)
+        session.on("audio.delta", on_audio)
+
+        # Send audio and trigger response
+        await session.send_audio(audio_chunk)
+        await session.commit_audio()
+        await session.create_response()
+
+asyncio.run(main())
 ```
 
 **With custom state and error handling:**
 
 ```python
-from openai_apis import RealtimeVoiceAPI, RealtimeAgentState, RealtimeConfig
+from openai_apis import RealtimeSession, RealtimeAgentState, RealtimeConfig, ErrorEvent
 
-state = RealtimeAgentState()
-state.set("user_preferences", {"language": "en"})
+async def main():
+    state = RealtimeAgentState()
+    state.set("user_preferences", {"language": "en"})
 
-config = RealtimeConfig(
-    language="en",
-    voice="alloy",
-    instructions="You are a friendly assistant."
-)
+    config = RealtimeConfig(
+        language="en",
+        voice="alloy",
+        instructions="You are a friendly assistant.",
+        keywords=["OpenAI", "API"]
+    )
 
-def on_error(error_msg):
-    print(f"Error: {error_msg}")
+    async with RealtimeSession(config, state) as session:
+        # Error handling
+        def on_error(event: ErrorEvent):
+            print(f"Error {event.code}: {event.message}")
 
-def on_session_created(session_id):
-    print(f"Session started: {session_id}")
+        session.on("error", on_error)
 
-api = RealtimeVoiceAPI(
-    config=config,
-    state=state,
-    on_error=on_error,
-    on_session_created=on_session_created,
-    on_response_audio=lambda audio: play_audio(audio)
-)
+        # Session lifecycle events
+        def on_session_created(data):
+            print(f"Session started: {session.session_id}")
 
-api.run_session_sync()
-```
+        session.on("session.created", on_session_created)
 
-**Custom audio output device:**
+        # Send audio and create response
+        await session.send_audio(audio_data)
+        await session.commit_audio()
+        await session.create_response()
 
-```python
-import sounddevice as sd
-
-# List available devices
-print(sd.query_devices())
-
-api = RealtimeVoiceAPI()
-api.set_output_device(2)  # Use device index 2
-api.run_session_sync()
+asyncio.run(main())
 ```
 
 **Streaming transcript events with delta callbacks:**
 
 ```python
 from openai_apis import (
-    RealtimeVoiceAPI,
+    RealtimeSession,
     TranscriptDelta,
     TranscriptCompleted,
     ErrorEvent
 )
 
-# Create API instance
-api = RealtimeVoiceAPI()
+async def main():
+    async with RealtimeSession() as session:
+        # Track streaming transcripts with deltas
+        def on_transcript_delta(event: TranscriptDelta):
+            """Called every ~200-500ms with partial transcript."""
+            print(f"\r[Streaming] {event.accumulated}", end="", flush=True)
 
-# Track streaming transcripts with deltas
-def on_transcript_delta(event: TranscriptDelta):
-    """Called every ~200-500ms with partial transcript."""
-    print(f"\r[Streaming] {event.accumulated}", end="", flush=True)
+        session.on("transcript.delta", on_transcript_delta)
 
-api.on("transcript.delta", on_transcript_delta)
+        # Handle completed transcripts
+        def on_transcript_completed(event: TranscriptCompleted):
+            """Called when speech turn completes."""
+            print(f"\n[Complete] {event.transcript}")
+            print(f"Duration: {event.duration_ms:.0f}ms")
 
-# Handle completed transcripts
-def on_transcript_completed(event: TranscriptCompleted):
-    """Called when speech turn completes."""
-    print(f"\n[Complete] {event.transcript}")
-    print(f"Duration: {event.duration_ms:.0f}ms")
+        session.on("transcript.input", on_transcript_completed)
+        session.on("transcript.output", on_transcript_completed)
 
-api.on("transcript.completed", on_transcript_completed)
+        # Handle errors
+        def on_api_error(event: ErrorEvent):
+            """Called on API errors."""
+            print(f"\n[Error {event.code}] {event.message}")
 
-# Handle errors
-def on_api_error(event: ErrorEvent):
-    """Called on API errors."""
-    print(f"\n[Error {event.code}] {event.message}")
+        session.on("error", on_api_error)
 
-api.on("error", on_api_error)
+        # Send audio and trigger response
+        await session.send_audio(audio_chunk)
+        await session.commit_audio()
+        await session.create_response()
 
-# Run session with streaming callbacks
-api.run_session_sync()
+asyncio.run(main())
 ```
 
-**Multiple callbacks for real-time processing:**
+**Tool calls and results:**
 
 ```python
-from openai_apis import RealtimeVoiceAPI, TranscriptDelta
-import logging
+from openai_apis import RealtimeSession
+import json
 
-api = RealtimeVoiceAPI()
+async def main():
+    async with RealtimeSession() as session:
+        # Handle tool calls
+        async def on_tool_call(data: dict):
+            call_id = data["call_id"]
+            name = data["name"]
+            arguments = json.loads(data["arguments"])
 
-# Callback 1: Update UI
-def update_display(event: TranscriptDelta):
-    display.update_text(event.accumulated)
+            # Execute tool
+            result = execute_tool(name, arguments)
 
-# Callback 2: Log to file
-def log_transcript(event: TranscriptDelta):
-    logging.info(f"Transcript delta: {event.delta}")
+            # Send result back
+            await session.send_tool_result(call_id, json.dumps(result))
 
-# Callback 3: Send to analytics
-def track_metrics(event: TranscriptDelta):
-    analytics.track("transcript_delta", {
-        "item_id": event.item_id,
-        "length": len(event.accumulated)
-    })
+        session.on("tool.call", on_tool_call)
 
-# Register all callbacks for the same event
-api.on("transcript.delta", update_display)
-api.on("transcript.delta", log_transcript)
-api.on("transcript.delta", track_metrics)
+        # Send audio and create response
+        await session.send_audio(audio_chunk)
+        await session.commit_audio()
+        await session.create_response()
 
-# All three callbacks will be called for each delta event
-api.run_session_sync()
+asyncio.run(main())
+```
+
+**Runtime session updates:**
+
+```python
+from openai_apis import RealtimeSession
+
+async def main():
+    async with RealtimeSession() as session:
+        # Update voice at runtime
+        await session.update_session(voice="alloy", temperature=0.8)
+
+        # Update instructions
+        await session.update_session(
+            instructions="You are now speaking in a more formal tone."
+        )
+
+        # Send audio and create response with new settings
+        await session.send_audio(audio_chunk)
+        await session.commit_audio()
+        await session.create_response()
+
+asyncio.run(main())
+```
+
+**Accessing per-session audit log:**
+
+```python
+from openai_apis import RealtimeSession
+from pathlib import Path
+
+async def main():
+    async with RealtimeSession() as session:
+        # Work with session
+        await session.send_audio(audio_chunk)
+        await session.commit_audio()
+        await session.create_response()
+
+        # Export audit trail
+        session.audit_log.export_to_file(Path("session_audit.json"))
+
+        # Or access events directly
+        for event in session.audit_log.events:
+            print(f"{event.timestamp}: {event.event_type}")
+
+asyncio.run(main())
 ```
 
 ---
@@ -2369,7 +2462,8 @@ from openai_apis.tts import (
 
 ```python
 from openai_apis import (
-    RealtimeVoiceAPI,
+    RealtimeSession,
+    RealtimeVoiceAPI,    # backward-compatible alias for RealtimeSession
     RealtimeConfig,
     RealtimeAgentState,
     # Event types for streaming callbacks
@@ -2380,7 +2474,8 @@ from openai_apis import (
 
 # Submodule imports also supported
 from openai_apis.realtime import (
-    RealtimeVoiceAPI,
+    RealtimeSession,
+    RealtimeVoiceAPI,    # backward-compatible alias
     RealtimeConfig,
     RealtimeAgentState,
     TranscriptDelta,
@@ -2396,10 +2491,10 @@ from openai_apis.realtime.events import (
 )
 ```
 
-**Note:** Realtime imports may be `None` if optional audio dependencies (`websocket-client`, `sounddevice`, `numpy`) are not installed. Install with:
+**Note:** Realtime module requires `websockets` library. Install with:
 
 ```bash
-pip install openai-apis[audio]
+pip install openai-apis[audio]  # includes websockets
 ```
 
 ### Complete Import Example
@@ -2424,7 +2519,8 @@ from openai_apis import (
     TTSAPI, TTSConfig, TTSRegistry, OpenAITTSProvider, ElevenLabsTTSProvider, BaseTTSProvider, TTSSynthesisError,
 
     # Realtime
-    RealtimeVoiceAPI, RealtimeConfig, RealtimeAgentState,
+    RealtimeSession, RealtimeVoiceAPI, RealtimeConfig, RealtimeAgentState,
+    TranscriptDelta, TranscriptCompleted, ErrorEvent,
 )
 ```
 
