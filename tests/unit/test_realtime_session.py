@@ -20,6 +20,8 @@ from openai_apis.realtime import (
     TranscriptDelta,
     TranscriptCompleted,
     ErrorEvent,
+    AudioDelta,
+    AudioDone,
 )
 from openai_apis import SessionState, InvalidStateTransition
 
@@ -529,10 +531,15 @@ class TestRealtimeSessionEventHandling:
 
     @pytest.mark.asyncio
     async def test_audio_delta(self):
-        """audio.delta emits decoded bytes."""
+        """audio.delta emits AudioDelta with audio_bytes, item_id, response_id."""
         audio_b64 = base64.b64encode(b"\x00\x01\x02\x03").decode("ascii")
         messages = make_handshake_messages() + [
-            json.dumps({"type": "response.audio.delta", "delta": audio_b64}),
+            json.dumps({
+                "type": "response.audio.delta",
+                "delta": audio_b64,
+                "item_id": "item_audio_1",
+                "response_id": "resp_audio_1",
+            }),
         ]
         mock_ws = MockWebSocket(messages)
         callback_data = []
@@ -546,13 +553,20 @@ class TestRealtimeSessionEventHandling:
                 await asyncio.sleep(0.1)
 
         assert len(callback_data) == 1
-        assert callback_data[0] == b"\x00\x01\x02\x03"
+        assert isinstance(callback_data[0], AudioDelta)
+        assert callback_data[0].audio_bytes == b"\x00\x01\x02\x03"
+        assert callback_data[0].item_id == "item_audio_1"
+        assert callback_data[0].response_id == "resp_audio_1"
 
     @pytest.mark.asyncio
     async def test_audio_done(self):
-        """audio.done emits."""
+        """audio.done emits AudioDone with item_id, response_id."""
         messages = make_handshake_messages() + [
-            json.dumps({"type": "response.audio.done", "response_id": "resp_123"}),
+            json.dumps({
+                "type": "response.audio.done",
+                "item_id": "item_audio_1",
+                "response_id": "resp_123",
+            }),
         ]
         mock_ws = MockWebSocket(messages)
         callback_data = []
@@ -566,7 +580,9 @@ class TestRealtimeSessionEventHandling:
                 await asyncio.sleep(0.1)
 
         assert len(callback_data) == 1
-        assert callback_data[0]["response_id"] == "resp_123"
+        assert isinstance(callback_data[0], AudioDone)
+        assert callback_data[0].item_id == "item_audio_1"
+        assert callback_data[0].response_id == "resp_123"
 
     @pytest.mark.asyncio
     async def test_tool_call(self):

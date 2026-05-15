@@ -33,3 +33,25 @@ class ErrorEvent:
     """Transcription/realtime error event."""
     code: str
     message: str
+
+
+@dataclass
+class AudioDelta:
+    """Output audio chunk from model response.
+
+    Emitted for response.audio.delta events with base64-decoded PCM16 bytes.
+    """
+    audio_bytes: bytes      # Decoded PCM16 bytes
+    item_id: str
+    response_id: str
+
+
+@dataclass
+class AudioDone:
+    """Output audio stream completion marker.
+
+    Emitted for response.audio.done events when all audio chunks
+    for a response item have been delivered.
+    """
+    item_id: str
+    response_id: str

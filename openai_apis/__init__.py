@@ -57,7 +57,10 @@ from openai_apis.realtime import (
     RealtimeConfig,
     RealtimeAgentState,
 )
-from openai_apis.realtime.events import TranscriptDelta, TranscriptCompleted, ErrorEvent
+from openai_apis.realtime.events import (
+    TranscriptDelta, TranscriptCompleted, ErrorEvent,
+    AudioDelta, AudioDone,
+)
 
 __all__ = [
     # Infrastructure
@@ -97,4 +100,6 @@ __all__ = [
     "TranscriptDelta",
     "TranscriptCompleted",
     "ErrorEvent",
+    "AudioDelta",
+    "AudioDone",
 ]
