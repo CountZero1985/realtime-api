@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **FastAPI Web Server Example** - Production-ready web server with REST and WebSocket endpoints (issue #36):
+  - **New `examples/web_server/` package**: Complete FastAPI application with application factory pattern
+  - **REST endpoint**: `POST /api/tts` for text-to-speech synthesis with base64 JSON or raw PCM binary response
+  - **WebSocket endpoints**: `WS /ws/transcription` for streaming transcription, `WS /ws/realtime` for full-duplex voice conversation
+  - **System endpoints**: `GET /api/health` for monitoring, `GET /api/config` for client configuration discovery
+  - **Pydantic validation**: Request/response models (`TTSRequest`, `TTSResponse`) with field validation
+  - **CORS middleware**: Configured for local development with customizable origins
+  - **Session management**: WebSocket handlers use `async with` context managers for automatic cleanup
+  - **Event forwarding**: Session callbacks bridge sync events to async WebSocket sends via `asyncio.ensure_future()`
+  - **Typed event integration**: WebSocket realtime endpoint uses typed events (`AudioDelta`, `TranscriptCompleted`, etc.)
+  - **Entry point**: `python examples/web_server/run.py` with CLI arguments for host, port, and reload
+  - **Dependencies**: Requires `[web]` extra (`fastapi`, `uvicorn`, `python-multipart`)
+  - **Comprehensive tests**: Full test coverage in `tests/test_web_server.py` and `tests/api/test_web_server_schema.py`
+  - **Documentation**: Complete API documentation in `docs/API.md` with endpoint specs, data flow diagrams, and production deployment guide
+  - Demonstrates integration of all three core APIs (TTS, Transcription, Realtime) in web application
+
 ### Changed
 
 - **Voice Agent Example Rewrite** - Rewrote `examples/voice_agent.py` as push-to-talk RealtimeSession example (issue #35):

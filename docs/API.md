@@ -40,6 +40,11 @@ Complete API reference for the `openai_apis` Python package, covering transcript
   - [SessionAuditLog](#sessionauditlog)
   - [AuditEvent](#auditevent)
   - [Global Logging Functions](#global-logging-functions)
+- [Web Server Example (FastAPI)](#web-server-example-fastapi)
+  - [Endpoints](#endpoints)
+  - [Architecture](#architecture)
+  - [Testing](#testing)
+  - [Production Deployment](#production-deployment)
 - [Import Reference](#import-reference)
 
 ---
@@ -3236,6 +3241,385 @@ For complete logging documentation, see [docs/LOGGING_AUDIT_TRAIL.md](./LOGGING_
 
 ---
 
+## Web Server Example (FastAPI)
+
+The `examples/web_server/` directory provides a production-ready FastAPI web server demonstrating REST and WebSocket endpoints for all three core APIs (TTS, Transcription, Realtime). This example shows how to integrate `openai_apis` into a web application.
+
+### Overview
+
+The web server exposes:
+- **REST endpoint**: `POST /api/tts` for text-to-speech synthesis
+- **WebSocket endpoints**: `WS /ws/transcription` and `WS /ws/realtime` for streaming transcription and realtime voice
+- **System endpoints**: `GET /api/health` and `GET /api/config` for monitoring and client configuration
+
+### Running the Server
+
+```bash
+# Install with web extras
+uv sync --extra web
+
+# Run the server
+python examples/web_server/run.py
+
+# Or with custom host/port
+python examples/web_server/run.py --host 0.0.0.0 --port 8080
+
+# With auto-reload for development
+python examples/web_server/run.py --reload
+```
+
+The server will be available at `http://localhost:8000` by default.
+
+### Endpoints
+
+#### POST /api/tts
+
+Synthesize text to speech using OpenAI TTS.
+
+**Request Body (JSON):**
+```json
+{
+  "text": "Hello, world!",
+  "voice": "ash",
+  "speed": 1.0,
+  "model": "gpt-4o-mini-tts",
+  "output_format": "base64",
+  "instructions": "Speak with excitement"
+}
+```
+
+**Parameters:**
+- `text` (required): Text to synthesize (1-4096 characters)
+- `voice` (optional): Voice name (default: "ash")
+- `speed` (optional): Speech speed 0.25-4.0 (default: 1.0)
+- `model` (optional): TTS model (default: "gpt-4o-mini-tts")
+- `output_format` (optional): "base64" for JSON response, "pcm" for raw binary (default: "base64")
+- `instructions` (optional): Voice steering instructions (gpt-4o-mini-tts only)
+
+**Response (output_format="base64"):**
+```json
+{
+  "audio": "base64-encoded-audio-data",
+  "sample_rate": 24000,
+  "channels": 1,
+  "format": "pcm16",
+  "text_length": 13,
+  "audio_duration_seconds": 1.234
+}
+```
+
+**Response (output_format="pcm"):**
+- Content-Type: `audio/pcm`
+- Headers: `X-Sample-Rate`, `X-Channels`, `X-Format`, `X-Duration-Seconds`
+- Body: Raw PCM16 audio bytes
+
+**Example:**
+```bash
+# Base64 JSON response
+curl -X POST http://localhost:8000/api/tts \
+  -H "Content-Type: application/json" \
+  -d '{"text": "Hello world", "voice": "sage"}'
+
+# Raw PCM binary
+curl -X POST http://localhost:8000/api/tts \
+  -H "Content-Type: application/json" \
+  -d '{"text": "Hello world", "output_format": "pcm"}' \
+  --output audio.pcm
+```
+
+#### WS /ws/transcription
+
+WebSocket endpoint for streaming speech-to-text transcription.
+
+**Query Parameters:**
+- `language` (optional): ISO-639-1 language code (default: "hu")
+- `model` (optional): Transcription model (default: "gpt-realtime-whisper")
+
+**Client → Server Messages:**
+```json
+{"type": "audio", "data": "base64-encoded-pcm16-audio"}
+{"type": "commit"}
+{"type": "close"}
+```
+
+**Server → Client Messages:**
+```json
+{"type": "session_ready"}
+{"type": "transcript.delta", "delta": "partial text", "item_id": "..."}
+{"type": "transcript.completed", "transcript": "final text", "item_id": "..."}
+{"type": "error", "message": "error description"}
+```
+
+**Usage Flow:**
+1. Connect to `ws://localhost:8000/ws/transcription?language=en`
+2. Server sends `{"type": "session_ready"}`
+3. Client sends audio chunks: `{"type": "audio", "data": "<base64-pcm16>"}`
+4. Client commits audio buffer: `{"type": "commit"}`
+5. Server streams transcript deltas and completion
+6. Client sends `{"type": "close"}` or disconnects to end session
+
+**Example (JavaScript):**
+```javascript
+const ws = new WebSocket('ws://localhost:8000/ws/transcription?language=en');
+
+ws.onmessage = (event) => {
+  const msg = JSON.parse(event.data);
+  if (msg.type === 'transcript.completed') {
+    console.log('Transcript:', msg.transcript);
+  }
+};
+
+// Send audio (assuming you have PCM16 audio as ArrayBuffer)
+const audioBase64 = btoa(String.fromCharCode(...new Uint8Array(audioBuffer)));
+ws.send(JSON.stringify({ type: 'audio', data: audioBase64 }));
+ws.send(JSON.stringify({ type: 'commit' }));
+```
+
+#### WS /ws/realtime
+
+WebSocket endpoint for full-duplex realtime voice conversation (voice-to-voice).
+
+**Query Parameters:**
+- `voice` (optional): Voice name (default: "ash")
+- `language` (optional): Language code (default: "hu")
+- `instructions` (optional): System instructions for the agent
+
+**Client → Server Messages:**
+```json
+{"type": "audio", "data": "base64-encoded-pcm16-audio"}
+{"type": "commit"}
+{"type": "cancel"}
+{"type": "close"}
+```
+
+**Server → Client Messages:**
+```json
+{"type": "session_ready"}
+{"type": "transcription", "text": "user speech transcription"}
+{"type": "response_audio", "data": "base64-audio-chunk"}
+{"type": "response_audio_done"}
+{"type": "response_text_delta", "text": "partial assistant text"}
+{"type": "response_text", "text": "complete assistant text"}
+{"type": "response_done"}
+{"type": "error", "message": "error description"}
+```
+
+**Usage Flow:**
+1. Connect to `ws://localhost:8000/ws/realtime?voice=sage&language=en`
+2. Server sends `{"type": "session_ready"}`
+3. Client sends audio chunks: `{"type": "audio", "data": "<base64-pcm16>"}`
+4. Client commits and requests response: `{"type": "commit"}`
+5. Server sends `{"type": "transcription"}` with user's speech
+6. Server streams audio (`response_audio`) and text (`response_text_delta`)
+7. Server signals completion: `{"type": "response_audio_done"}` and `{"type": "response_done"}`
+8. Client can interrupt: `{"type": "cancel"}`
+9. Repeat steps 3-8 for multi-turn conversation
+
+**Example (JavaScript):**
+```javascript
+const ws = new WebSocket('ws://localhost:8000/ws/realtime?voice=sage&language=en');
+const audioChunks = [];
+
+ws.onmessage = (event) => {
+  const msg = JSON.parse(event.data);
+
+  if (msg.type === 'transcription') {
+    console.log('You said:', msg.text);
+  } else if (msg.type === 'response_audio') {
+    // Decode and queue audio for playback
+    const audioBytes = Uint8Array.from(atob(msg.data), c => c.charCodeAt(0));
+    audioChunks.push(audioBytes);
+  } else if (msg.type === 'response_audio_done') {
+    // Play accumulated audio
+    playAudio(audioChunks);
+    audioChunks.length = 0;
+  }
+};
+
+// Send audio, then commit to trigger response
+ws.send(JSON.stringify({ type: 'audio', data: audioBase64 }));
+ws.send(JSON.stringify({ type: 'commit' }));
+
+// Cancel in-progress response
+ws.send(JSON.stringify({ type: 'cancel' }));
+```
+
+#### GET /api/health
+
+Health check endpoint for monitoring.
+
+**Response:**
+```json
+{
+  "status": "healthy",
+  "api_key_configured": true
+}
+```
+
+#### GET /api/config
+
+Client configuration endpoint exposing available voices, models, and defaults.
+
+**Response:**
+```json
+{
+  "tts": {
+    "voices": ["alloy", "ash", "ballad", "coral", "echo", "fable", "nova", "onyx", "sage", "shimmer", "verse", "marin", "cedar"],
+    "models": ["gpt-4o-mini-tts", "tts-1", "tts-1-hd"],
+    "output_formats": ["pcm", "mp3", "opus", "aac", "flac", "wav"],
+    "defaults": {"voice": "ash", "model": "gpt-4o-mini-tts", "speed": 1.0}
+  },
+  "transcription": {
+    "models": ["gpt-realtime-whisper", "gpt-4o-mini-transcribe", "gpt-4o-transcribe", "whisper-1"],
+    "defaults": {"model": "gpt-realtime-whisper", "language": "hu"}
+  },
+  "realtime": {
+    "voices": ["alloy", "ash", "ballad", "coral", "echo", "sage", "shimmer", "verse"],
+    "models": ["gpt-realtime-mini", "gpt-4o-realtime-preview"],
+    "defaults": {"voice": "ash", "model": "gpt-realtime-mini", "language": "hu"}
+  }
+}
+```
+
+### Architecture
+
+The web server follows a clean architecture:
+
+```
+examples/web_server/
+├── __init__.py          # Package marker
+├── app.py               # FastAPI app factory, CORS, system endpoints
+├── routes/
+│   ├── __init__.py      # Route exports
+│   ├── tts.py           # POST /api/tts
+│   ├── transcription.py # WS /ws/transcription
+│   └── realtime.py      # WS /ws/realtime
+└── run.py               # Entry point with uvicorn
+```
+
+**Key Design Patterns:**
+- **Application Factory**: `create_app()` for testability and configuration
+- **Router Separation**: Each API module has its own router
+- **Pydantic Models**: Request/response validation via `TTSRequest`, `TTSResponse`
+- **Session Management**: WebSocket handlers use `async with` context managers for automatic cleanup
+- **Event Forwarding**: Session callbacks use `asyncio.ensure_future()` to bridge sync callbacks with async WebSocket sends
+
+### Data Flow
+
+#### TTS Endpoint
+```
+Client HTTP POST → Pydantic validation (TTSRequest)
+                 → TTSConfig creation
+                 → TTSRegistry.create(config)
+                 → provider.synthesize(text, voice, speed)
+                 → numpy array → bytes
+                 → Response (PCM binary or base64 JSON)
+```
+
+#### Transcription WebSocket
+```
+Client WebSocket ↔ FastAPI Handler ↔ TranscriptionSession (openai_apis)
+  {"type":"audio"} → session.send_audio(bytes)
+  {"type":"commit"} → session.commit_audio()
+  Session event "transcript.delta" → {"type":"transcript.delta"} to client
+  Session event "transcript.completed" → {"type":"transcript.completed"} to client
+```
+
+#### Realtime WebSocket
+```
+Client WebSocket ↔ FastAPI Handler ↔ RealtimeSession (openai_apis)
+  {"type":"audio"} → session.send_audio(bytes)
+  {"type":"commit"} → session.commit_audio() + session.create_response()
+  {"type":"cancel"} → session.cancel_response()
+  Session events → Typed events (AudioDelta, TranscriptCompleted, etc.) → JSON to client
+```
+
+### CORS Configuration
+
+The server includes CORS middleware configured for local development:
+
+```python
+cors_origins = [
+    "http://localhost:8000",
+    "http://localhost:3000",
+    "http://127.0.0.1:8000",
+    "http://127.0.0.1:3000",
+]
+```
+
+Override with `create_app(cors_origins=[...])` for production deployments.
+
+### Testing
+
+The web server includes comprehensive tests in `tests/test_web_server.py` and `tests/api/test_web_server_schema.py`:
+
+- Import validation
+- Health and config endpoint tests
+- TTS endpoint with mocked synthesis
+- WebSocket transcription with event mocking
+- WebSocket realtime with full event flow
+- CORS header validation
+- Error handling (invalid requests, disconnections)
+
+Run tests:
+```bash
+pytest tests/test_web_server.py -v
+pytest tests/api/test_web_server_schema.py -v
+```
+
+### Dependencies
+
+The web server requires the `[web]` extra:
+
+```toml
+[project.optional-dependencies]
+web = [
+    "fastapi>=0.115.6",
+    "uvicorn[standard]>=0.34.0",
+    "python-multipart>=0.0.20",
+]
+```
+
+Install with:
+```bash
+pip install -e ".[web]"
+# or
+uv sync --extra web
+```
+
+### Production Deployment
+
+For production deployments, consider:
+
+1. **Environment Variables**: Set `OPENAI_API_KEY` via environment or secrets management
+2. **CORS Origins**: Configure `cors_origins` for your frontend domain
+3. **HTTPS**: Deploy behind a reverse proxy (nginx, Caddy) with TLS termination
+4. **Scalability**: Use multiple uvicorn workers: `uvicorn app:app --workers 4`
+5. **Monitoring**: Integrate health endpoint into your monitoring system
+6. **Rate Limiting**: Add rate limiting middleware to prevent abuse
+7. **Authentication**: Add authentication middleware for securing endpoints
+8. **Logging**: Configure structured logging and integrate with your log aggregation system
+
+**Example Production Start:**
+```bash
+uvicorn examples.web_server.app:create_app \
+  --factory \
+  --host 0.0.0.0 \
+  --port 8000 \
+  --workers 4 \
+  --proxy-headers \
+  --forwarded-allow-ips='*'
+```
+
+### See Also
+
+- **[examples/web_server/app.py](../examples/web_server/app.py)** - Application factory implementation
+- **[examples/web_server/routes/](../examples/web_server/routes/)** - Endpoint implementations
+- **[tests/test_web_server.py](../tests/test_web_server.py)** - Web server tests
+- **[FastAPI Documentation](https://fastapi.tiangolo.com/)** - FastAPI framework reference
+
+---
+
 ## Import Reference
 
 Complete reference of all public exports from the `openai_apis` package.
@@ -3418,4 +3802,4 @@ from openai_apis import (
 ---
 
 **Version:** 1.0
-**Last Updated:** 2025-12-26
+**Last Updated:** 2026-05-15
