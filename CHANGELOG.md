@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **MCP Plugin System** - Implemented Model Context Protocol plugin stub system as new `openai_apis/mcp/` subpackage (issue #29):
+  - **`MCPPlugin` abstract base class**: Abstract interface in `openai_apis/mcp/base.py` with four abstract members: `name` (plugin identifier), `description` (human-readable description), `get_tools()` (returns tool definitions in OpenAI function-calling JSON Schema format), and `execute_tool()` (async tool execution handler)
+  - **`MCPPluginManager` class**: Plugin registry and dispatcher in `openai_apis/mcp/manager.py` with `register()` for plugin registration, `get_all_tools()` for tool aggregation, `execute()` for tool dispatch, and `populate_tool_registry()` for ToolRegistry integration
+  - **Stub plugins**: `FileSystemPlugin` (read_file, write_file tools) and `GmailPlugin` (send_email, read_emails tools) in `openai_apis/mcp/plugins/` - both raise `NotImplementedError` on execution (placeholder for future implementation)
+  - **ToolRegistry integration**: `populate_tool_registry()` bridges MCP tools into Realtime API's `ToolRegistry` so MCP tools appear as regular function-calling tools
+  - **Validation and error handling**: Registration validates plugin types, detects duplicate plugin names and tool name collisions across plugins, raises clear `TypeError` and `ValueError` exceptions
+  - **Helper properties**: `plugin_names` (sorted list), `__len__`, `__bool__` for convenient manager inspection
+  - **Design patterns**: Follows `BaseTTSProvider` ABC pattern for plugin base class, `ElevenLabsTTSProvider` stub pattern for plugin stubs, and `ToolRegistry` pattern for manager
+  - Exported from package root: `from openai_apis import MCPPlugin, MCPPluginManager, FileSystemPlugin, GmailPlugin`
+  - Comprehensive unit tests in `tests/unit/test_mcp_base.py`, `tests/unit/test_mcp_manager.py`, and `tests/unit/test_mcp_plugins.py` covering ABC contract, registration, dispatch, ToolRegistry integration, and stub behavior
+
 - **ToolRegistry for Realtime API** - Implemented comprehensive tool/function calling registry system (issue #28):
   - **`ToolRegistry` class**: New registry in `openai_apis/realtime/tools.py` for managing tool definitions and handlers
   - **Tool registration**: `register(name, description, parameters, handler)` method for registering tools with JSON Schema parameters
