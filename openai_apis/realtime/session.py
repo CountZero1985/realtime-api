@@ -581,8 +581,20 @@ class RealtimeSession(BaseSession):
                 )
 
         # Response lifecycle
+        elif event_type == "response.created":
+            response = event.get("response", {})
+            self._current_response_id = response.get("id")
+            self._emit("response.created", response)
+
         elif event_type == "response.done":
-            self._emit("response.done", {"response_id": event.get("response_id", "")})
+            response = event.get("response", {})
+            response_id = response.get("id", event.get("response_id", ""))
+            status = response.get("status", "")
+            self._current_response_id = None
+            self._emit("response.done", {
+                "response_id": response_id,
+                "status": status,
+            })
 
         # Errors
         elif event_type == "error":
