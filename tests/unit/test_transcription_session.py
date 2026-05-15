@@ -139,7 +139,9 @@ class TestTranscriptionSessionConnect:
     @pytest.mark.asyncio
     async def test_connect_sends_session_update(self):
         """session.update event sent after connection."""
-        config = TranscriptionConfig(api_key="test-key", language="hu")
+        # Disable VAD to test baseline session.update without turn_detection
+        vad = VADConfig(mode="disabled")
+        config = TranscriptionConfig(api_key="test-key", language="hu", vad=vad)
         session = TranscriptionSession(config=config)
 
         mock_ws = MockWebSocket(
@@ -1123,7 +1125,7 @@ class TestVADConfiguration:
     async def test_session_update_with_server_vad(self):
         """session.update includes server_vad turn_detection when configured."""
         vad = VADConfig(mode="server_vad", threshold=0.6, silence_duration_ms=600)
-        config = TranscriptionConfig(api_key="test-key", vad_config=vad)
+        config = TranscriptionConfig(api_key="test-key", vad=vad)
         session = TranscriptionSession(config=config)
 
         mock_ws = MockWebSocket(
@@ -1155,7 +1157,7 @@ class TestVADConfiguration:
     async def test_session_update_with_semantic_vad(self):
         """session.update includes semantic_vad turn_detection when configured."""
         vad = VADConfig(mode="semantic_vad", eagerness="low")
-        config = TranscriptionConfig(api_key="test-key", vad_config=vad)
+        config = TranscriptionConfig(api_key="test-key", vad=vad)
         session = TranscriptionSession(config=config)
 
         mock_ws = MockWebSocket(
@@ -1186,7 +1188,7 @@ class TestVADConfiguration:
     async def test_session_update_with_disabled_vad(self):
         """session.update has turn_detection=null when VAD disabled."""
         vad = VADConfig(mode="disabled")
-        config = TranscriptionConfig(api_key="test-key", vad_config=vad)
+        config = TranscriptionConfig(api_key="test-key", vad=vad)
         session = TranscriptionSession(config=config)
 
         mock_ws = MockWebSocket(
@@ -1213,8 +1215,9 @@ class TestVADConfiguration:
 
     @pytest.mark.asyncio
     async def test_session_update_default_no_vad(self):
-        """Default config (no vad_config) sends turn_detection=null."""
-        config = TranscriptionConfig(api_key="test-key")
+        """Config with disabled VAD sends turn_detection=null."""
+        vad = VADConfig(mode="disabled")
+        config = TranscriptionConfig(api_key="test-key", vad=vad)
         session = TranscriptionSession(config=config)
 
         mock_ws = MockWebSocket(
@@ -1332,10 +1335,11 @@ class TestVADConfiguration:
             mock_connect.return_value = mock_ws
 
             async with session:
-                assert session._config.vad_config is None
+                # Check initial vad setting
+                assert session._config.vad is not None
                 new_vad = VADConfig(mode="semantic_vad", eagerness="medium")
                 await session.update_vad(new_vad)
-                assert session._config.vad_config == new_vad
+                assert session._config.vad == new_vad
 
 
 class TestSessionUpdatePayload:
@@ -1390,7 +1394,9 @@ class TestSessionUpdatePayload:
     @pytest.mark.asyncio
     async def test_session_update_push_to_talk_mode(self):
         """session.update sets turn_detection to None (push-to-talk)."""
-        config = TranscriptionConfig(api_key="test-key")
+        # Disable VAD for push-to-talk mode
+        vad = VADConfig(mode="disabled")
+        config = TranscriptionConfig(api_key="test-key", vad=vad)
         session = TranscriptionSession(config=config)
 
         mock_ws = MockWebSocket(

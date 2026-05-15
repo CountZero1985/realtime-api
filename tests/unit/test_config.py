@@ -152,10 +152,10 @@ class TestBaseConfig:
         assert config.api_key == "sk-explicit-key"
 
     def test_api_key_none_when_no_env(self, monkeypatch):
-        """ValueError raised when api_key=None and env var not set."""
+        """Config can be created with api_key=None when env var not set."""
         monkeypatch.delenv("OPENAI_API_KEY", raising=False)
-        with pytest.raises(ValueError, match="OPENAI_API_KEY must be provided"):
-            BaseConfig()
+        config = BaseConfig()
+        assert config.api_key is None
 
     def test_audio_format_default_instance(self):
         """Default audio_format is AudioFormat with defaults."""

@@ -247,7 +247,7 @@ class TranscriptionSession(BaseSession):
         }
 
         await self._send_event(event)
-        self._config.vad_config = vad_config
+        self._config.vad = vad_config
 
         self._audit_log.log("vad.updated", {
             "mode": vad_config.mode,
@@ -367,7 +367,7 @@ class TranscriptionSession(BaseSession):
             "whisper-1" if self._config.model == "whisper-1" else "whisper-1"
         )
 
-        turn_detection = self._vad_config_to_turn_detection(self._config.vad_config)
+        turn_detection = self._vad_config_to_turn_detection(self._config.vad)
 
         event = {
             "type": "session.update",

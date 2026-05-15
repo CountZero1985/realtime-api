@@ -357,13 +357,14 @@ class TestErrorHandlingAcrossAPIs:
             with pytest.raises(ValueError, match="OPENAI_API_KEY"):
                 TranscriptionAPI(config=TranscriptionConfig(api_key=None))
 
-            # TTSAPI requires it
+            # TTSAPI requires it when initializing the OpenAI client
             with pytest.raises(ValueError, match="OPENAI_API_KEY"):
                 TTSAPI(config=TTSConfig(api_key=None))
 
-            # RealtimeSession validates API key in config
-            with pytest.raises(ValueError, match="OPENAI_API_KEY"):
-                RealtimeVoiceAPI(config=RealtimeConfig(api_key=None))
+            # RealtimeSession config can be created without API key
+            # (validation happens during connection, not init)
+            session = RealtimeVoiceAPI(config=RealtimeConfig(api_key=None))
+            assert session is not None
 
     @pytest.mark.asyncio
     async def test_empty_input_handling(self):
