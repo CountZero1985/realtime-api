@@ -938,6 +938,16 @@ class TestRealtimeSessionAuditLog:
         assert chunk_events[1].data["total_bytes"] == 200
 
 
+class TestRealtimeSessionWebsocketsImport:
+    """Test websockets None guard (line 120)."""
+
+    def test_init_raises_import_error_when_websockets_missing(self):
+        """ImportError raised when websockets is None."""
+        with patch("openai_apis.realtime.session.websockets", None):
+            with pytest.raises(ImportError, match="websockets library required"):
+                RealtimeSession()
+
+
 class TestRealtimeSessionToolExecutionFailure:
     """Test _execute_tool error handling path (lines 341-352)."""
 
