@@ -1380,31 +1380,41 @@ Configuration for Realtime API sessions. Extends `BaseConfig`.
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `model` | `str` | `"gpt-4o-mini-realtime-preview-2024-12-17"` | Realtime model |
-| `voice` | `str` | `"sage"` | Voice (sage, ash, alloy, echo, shimmer) |
-| `speed` | `float` | `1.1` | Speech speed (0.25-4.0) |
-| `transcription_model` | `str` | `"gpt-4o-mini-transcribe"` | Model for transcription |
-| `language` | `str` | `"hu"` | Language code (ISO-639-1) |
-| `keywords` | `Optional[List[str]]` | `None` | Domain-specific keywords for transcription steering |
-| `sample_rate` | `int` | `24000` | Audio sample rate in Hz |
-| `chunk_duration_s` | `float` | `0.5` | Audio chunk duration in seconds |
-| `channels` | `int` | `1` | Audio channels (1 = mono) |
-| `instructions` | `str` | `"segíts a kizárólag magyarul beszélő felhasználónak"` | System instructions |
-| `modalities` | `List[str]` | `["text", "audio"]` | Enabled modalities |
-| `temperature` | `float` | `0.8` | Sampling temperature |
-| `max_response_output_tokens` | `str` | `"inf"` | Max response tokens |
+| `model` | `str` | `"gpt-realtime-mini"` | Realtime model (gpt-realtime-mini, gpt-4o-mini-realtime-preview-2024-12-17, gpt-4o-realtime-preview, gpt-4o-realtime-preview-2024-12-17) |
+| `instructions` | `Optional[str]` | `None` | System prompt / instructions for the agent |
+| `voice` | `str` | `"ash"` | Output voice for TTS (alloy, ash, ballad, coral, echo, sage, shimmer, verse) |
+| `language` | `str` | `"hu"` | Language code for transcription (ISO-639-1) |
+| `vad` | `VADConfig` | `VADConfig()` | Voice Activity Detection configuration |
+| `temperature` | `float` | `0.8` | Model sampling temperature (0.6-1.2) |
+| `max_response_output_tokens` | `Union[int, str]` | `"inf"` | Max output tokens ("inf" or positive integer) |
+| `input_audio_transcription` | `bool` | `True` | Whether to request input audio transcription |
+| `modalities` | `list[str]` | `["audio", "text"]` | Enabled modalities (["audio", "text"]) |
+| `tools` | `list[dict]` | `[]` | Tool definitions (JSON Schema format for function calling) |
 
 Plus all fields from `BaseConfig` (`api_key`, `timeout`, `audio_format`).
+
+**Note:** Audio format (sample rate, channels, encoding) is now configured via `BaseConfig.audio_format` (AudioFormat dataclass).
+
+#### Validation
+
+`RealtimeConfig` performs comprehensive validation in `__post_init__`:
+- **model**: Must be one of the supported realtime models
+- **voice**: Must be one of the supported realtime voices
+- **temperature**: Must be between 0.6 and 1.2
+- **max_response_output_tokens**: Must be "inf" or a positive integer
+- **modalities**: Must only contain "audio" and/or "text"
+
+Invalid configurations raise `ValueError` with clear error messages.
 
 #### Usage
 
 ```python
-from openai_apis import RealtimeConfig
+from openai_apis import RealtimeConfig, VADConfig
 
-# Use defaults (Hungarian, sage voice)
+# Use defaults (Hungarian, ash voice, server VAD enabled)
 config = RealtimeConfig()
 
-# English conversation with custom voice
+# English conversation with custom voice and temperature
 config = RealtimeConfig(
     language="en",
     voice="alloy",
@@ -1412,36 +1422,75 @@ config = RealtimeConfig(
     temperature=0.7
 )
 
-# Hungarian with domain-specific keywords for better transcription
+# Custom VAD configuration
 config = RealtimeConfig(
-    language="hu",
-    keywords=["OpenAI", "WebSocket", "transzkripció", "API"]
+    vad=VADConfig(mode="semantic_vad", eagerness="high")
+)
+
+# Disable VAD for push-to-talk mode
+config = RealtimeConfig(
+    vad=VADConfig(mode="disabled")
 )
 
 # Text-only mode (no audio)
 config = RealtimeConfig(modalities=["text"])
+
+# With function calling tools
+tools = [
+    {
+        "type": "function",
+        "name": "get_weather",
+        "description": "Get current weather for a location",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "location": {"type": "string"}
+            },
+            "required": ["location"]
+        }
+    }
+]
+config = RealtimeConfig(tools=tools)
+
+# Disable input transcription (audio-only mode)
+config = RealtimeConfig(input_audio_transcription=False)
 ```
 
-#### Keyword Steering
+#### Session Update Conversion
 
-The `keywords` field enables domain-specific transcription steering via the OpenAI Realtime API's `input_audio_transcription.prompt` field:
+The `to_session_update()` method converts the config to the OpenAI Realtime API `session.update` event format:
 
-- **For `whisper-1` model**: Keywords are sent as a comma-separated list (e.g., `"OpenAI, WebSocket, API"`)
-- **For `gpt-4o-transcribe` models**: Keywords are sent as a free-text hint for better domain-specific transcription
-- **Automatic propagation**: Keywords are automatically included in the `session.update` WebSocket event when the session is configured
-- **Smart omission**: The `prompt` field is only included when `keywords` is non-empty (omitted for `None` or empty list `[]`)
-
-**Example:**
 ```python
 config = RealtimeConfig(
-    language="hu",
-    keywords=["mesterséges intelligencia", "neurális hálózat", "gépi tanulás"]
+    voice="sage",
+    temperature=0.9,
+    vad=VADConfig(mode="server_vad", threshold=0.7)
 )
-# Results in session.update event with:
-# "input_audio_transcription": {
-#     "model": "gpt-4o-mini-transcribe",
-#     "language": "hu",
-#     "prompt": "mesterséges intelligencia, neurális hálózat, gépi tanulás"
+
+# Convert to session.update event
+event = config.to_session_update()
+# Returns:
+# {
+#     "type": "session.update",
+#     "session": {
+#         "model": "gpt-realtime-mini",
+#         "voice": "sage",
+#         "modalities": ["audio", "text"],
+#         "input_audio_format": "pcm16",
+#         "output_audio_format": "pcm16",
+#         "temperature": 0.9,
+#         "max_response_output_tokens": "inf",
+#         "turn_detection": {
+#             "type": "server_vad",
+#             "threshold": 0.7,
+#             "prefix_padding_ms": 300,
+#             "silence_duration_ms": 500
+#         },
+#         "input_audio_transcription": {
+#             "model": "whisper-1",
+#             "language": "hu"
+#         }
+#     }
 # }
 ```
 
