@@ -91,52 +91,48 @@ class TestRealtimeConfig:
     def test_default_config(self):
         """Test default configuration values."""
         config = RealtimeConfig()
-        assert config.model == "gpt-4o-mini-realtime-preview-2024-12-17"
-        assert config.voice == "sage"
-        assert config.speed == 1.1
-        assert config.transcription_model == "gpt-4o-mini-transcribe"
+        assert config.model == "gpt-realtime-mini"
+        assert config.voice == "ash"
         assert config.language == "hu"
-        assert config.sample_rate == 24000
-        assert config.chunk_duration_s == 0.5
-        assert config.channels == 1
-        assert config.modalities == ["text", "audio"]
+        assert config.modalities == ["audio", "text"]
         assert config.temperature == 0.8
+        assert config.input_audio_transcription is True
 
     def test_custom_config(self):
         """Test custom configuration values."""
         config = RealtimeConfig(
             model="gpt-4o-realtime-preview",
             voice="alloy",
-            speed=1.5,
             language="en",
-            sample_rate=16000,
             temperature=0.9,
         )
         assert config.model == "gpt-4o-realtime-preview"
         assert config.voice == "alloy"
-        assert config.speed == 1.5
         assert config.language == "en"
-        assert config.sample_rate == 16000
+        assert config.temperature == 0.9
 
     def test_post_init_modalities(self):
-        """Test __post_init__ sets modalities if None."""
-        config = RealtimeConfig(modalities=None)
-        assert config.modalities == ["text", "audio"]
+        """Test __post_init__ sets modalities default."""
+        config = RealtimeConfig()
+        assert config.modalities == ["audio", "text"]
 
     def test_post_init_custom_modalities(self):
         """Test __post_init__ preserves custom modalities."""
         config = RealtimeConfig(modalities=["text"])
         assert config.modalities == ["text"]
 
-    def test_config_with_keywords(self):
-        """Test RealtimeConfig with keywords."""
-        config = RealtimeConfig(keywords=["OpenAI", "WebSocket", "transzkripció"])
-        assert config.keywords == ["OpenAI", "WebSocket", "transzkripció"]
+    def test_config_with_vad(self):
+        """Test RealtimeConfig with VAD configuration."""
+        from openai_apis._config import VADConfig
+        vad = VADConfig(mode="server_vad", threshold=0.7)
+        config = RealtimeConfig(vad=vad)
+        assert config.vad.mode == "server_vad"
+        assert config.vad.threshold == 0.7
 
-    def test_config_keywords_default_none(self):
-        """Test RealtimeConfig keywords default is None."""
+    def test_config_vad_default(self):
+        """Test RealtimeConfig VAD default is server_vad."""
         config = RealtimeConfig()
-        assert config.keywords is None
+        assert config.vad.mode == "server_vad"
 
 
 # RealtimeAgentState Tests (keep existing state tests)
@@ -191,7 +187,7 @@ class TestRealtimeSessionInit:
         """Default RealtimeConfig used when None."""
         session = RealtimeSession()
         assert isinstance(session._config, RealtimeConfig)
-        assert session._config.model == "gpt-4o-mini-realtime-preview-2024-12-17"
+        assert session._config.model == "gpt-realtime-mini"
 
     def test_custom_config(self):
         """Custom config is stored."""
@@ -276,7 +272,8 @@ class TestRealtimeSessionLifecycle:
             sent_event = json.loads(mock_ws.sent_messages[0])
             assert sent_event["type"] == "session.update"
             assert "session" in sent_event
-            assert sent_event["session"]["voice"] == "sage"
+            assert sent_event["session"]["voice"] == "ash"
+            assert sent_event["session"]["model"] == "gpt-realtime-mini"
 
     @pytest.mark.asyncio
     async def test_session_created_event_emitted(self):
@@ -409,7 +406,7 @@ class TestRealtimeSessionCreateResponse:
         sent_event = json.loads(mock_ws.sent_messages[1])
         assert sent_event["type"] == "response.create"
         assert "response" in sent_event
-        assert sent_event["response"]["voice"] == "sage"
+        assert sent_event["response"]["voice"] == "ash"
 
     @pytest.mark.asyncio
     async def test_create_response_not_connected_raises(self):
