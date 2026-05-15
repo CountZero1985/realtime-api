@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Voice Agent Example Rewrite** - Rewrote `examples/voice_agent.py` as push-to-talk RealtimeSession example (issue #35):
+  - **Push-to-talk mode**: Replaced VoicePipeline-based implementation with RealtimeSession using VAD disabled mode
+  - **ToolRegistry integration**: Demonstrates tool/function calling with `get_current_time` and `get_weather` tools
+  - **Audio streaming**: Manual audio recording via `record_audio()`, chunked streaming (4800 samples/0.2s chunks) to WebSocket
+  - **Event-driven playback**: Accumulates audio deltas in bytearray buffer, plays via AudioPlayer on `audio.done` event
+  - **Conversation history**: Interactive `h` command displays full conversation transcript via `session.get_conversation_history()`
+  - **Audit log export**: Automatic export of per-session audit log to `logs/voice_agent_audit.json` on exit
+  - **Graceful exit**: Supports both `q` command and Ctrl+C with proper cleanup
+  - **Hungarian interface**: All UI text and prompts in Hungarian language
+  - Example demonstrates complete RealtimeSession workflow: event callbacks, audio I/O, tool execution, and audit logging
+
+### Changed
+
 - **Public API Cleanup** - Simplified `openai_apis/__init__.py` to export minimal, clean public API surface (issue #33):
   - **Reduced exports**: From 42 symbols to 16 core symbols organized into logical groups
   - **Core sessions**: `TranscriptionSession`, `TranscriptionConfig`, `RealtimeSession`, `RealtimeConfig`, `TTSProvider`, `TTSConfig`, `TTSRegistry`
