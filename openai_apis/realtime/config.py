@@ -45,7 +45,7 @@ class RealtimeConfig(BaseConfig):
     max_response_output_tokens: Union[int, str] = "inf"
     input_audio_transcription: bool = True
     modalities: list[str] = field(default_factory=lambda: ["audio", "text"])
-    tools: list[dict] = field(default_factory=list)
+    tools: Union[list[dict], "ToolRegistry"] = field(default_factory=list)
 
     def __post_init__(self):
         super().__post_init__()
@@ -141,7 +141,11 @@ class RealtimeConfig(BaseConfig):
 
         # Tools
         if self.tools:
-            session["tools"] = self.tools
+            from openai_apis.realtime.tools import ToolRegistry
+            if isinstance(self.tools, ToolRegistry):
+                session["tools"] = self.tools.to_api_format()
+            else:
+                session["tools"] = self.tools
 
         return {
             "type": "session.update",
