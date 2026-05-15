@@ -44,7 +44,10 @@ except ImportError:
 from openai_apis._session import BaseSession, SessionState, InvalidStateTransition
 from openai_apis._logging import get_logger, set_correlation_id
 from openai_apis.realtime.config import RealtimeConfig
-from openai_apis.realtime.events import TranscriptDelta, TranscriptCompleted, ErrorEvent
+from openai_apis.realtime.events import (
+    TranscriptDelta, TranscriptCompleted, ErrorEvent,
+    AudioDelta, AudioDone,
+)
 
 
 class RealtimeAgentState:
@@ -83,16 +86,16 @@ class RealtimeSession(BaseSession):
     from BaseSession. Uses async context manager pattern.
 
     Callback events (registered via session.on()):
-        - "audio.delta": Output audio chunk (bytes, base64-decoded)
-        - "audio.done": Output audio stream complete
-        - "transcript.input": Input transcription (user speech as text)
-        - "transcript.output": Output transcription (model speech as text)
+        - "audio.delta": Output audio chunk (AudioDelta with audio_bytes, item_id, response_id)
+        - "audio.done": Output audio stream complete (AudioDone with item_id, response_id)
+        - "transcript.input": Input transcription (TranscriptCompleted)
+        - "transcript.output": Output transcription (TranscriptCompleted)
         - "transcript.delta": Partial transcription (TranscriptDelta)
-        - "tool.call": Tool/function call request from model
-        - "response.done": Response generation complete
-        - "error": Error from server
-        - "session.created": Server session created
-        - "session.updated": Server session configured
+        - "tool.call": Tool/function call request from model (dict)
+        - "response.done": Response generation complete (dict)
+        - "error": Error from server (ErrorEvent)
+        - "session.created": Server session created (dict)
+        - "session.updated": Server session configured (dict)
     """
 
     WEBSOCKET_URL = "wss://api.openai.com/v1/realtime"
@@ -126,6 +129,11 @@ class RealtimeSession(BaseSession):
         self._reconnect_delay = reconnect_delay
         # Delta accumulator: maps item_id -> {"accumulated": str, "start_time": float}
         self._delta_accumulator: Dict[str, Dict[str, Any]] = {}
+        # Audio output accumulator: maps item_id -> {"chunk_count": int, "total_bytes": int, "start_time": float}
+        self._audio_output_accumulator: Dict[str, Dict[str, Any]] = {}
+        # Input audio counters for audit
+        self._input_audio_chunks: int = 0
+        self._input_audio_bytes: int = 0
 
     @property
     def agent_state(self) -> RealtimeAgentState:
@@ -197,23 +205,49 @@ class RealtimeSession(BaseSession):
 
         Raises:
             InvalidStateTransition: If not in CONNECTED state.
+
+        Audit Logging:
+            Logs 'audio.chunk_sent' event with chunk_size, total_chunks, and
+            total_bytes (cumulative since last commit).
         """
         self._assert_connected("send_audio")
         audio_b64 = base64.b64encode(chunk).decode("ascii")
         await self._send_event({"type": "input_audio_buffer.append", "audio": audio_b64})
-        self._audit_log.log("audio.chunk_sent", {"chunk_size": len(chunk)})
+        self._input_audio_chunks += 1
+        self._input_audio_bytes += len(chunk)
+        self._audit_log.log("audio.chunk_sent", {
+            "chunk_size": len(chunk),
+            "total_chunks": self._input_audio_chunks,
+            "total_bytes": self._input_audio_bytes,
+        })
 
     async def commit_audio(self) -> None:
         """Commit audio buffer (push-to-talk).
 
         Signals end of user audio input, creating a conversation item.
+        Resets input audio counters for next turn.
 
         Raises:
             InvalidStateTransition: If not in CONNECTED state.
+
+        Audit Logging:
+            Logs 'audio.buffer_committed' event with total_chunks, total_bytes,
+            and audio_duration_s calculated from accumulated data.
         """
         self._assert_connected("commit_audio")
         await self._send_event({"type": "input_audio_buffer.commit"})
-        self._audit_log.log("audio.buffer_committed", {})
+        sample_rate = self._config.audio_format.sample_rate
+        channels = self._config.audio_format.channels
+        bytes_per_sample = 2  # PCM16
+        audio_duration_s = self._input_audio_bytes / (sample_rate * channels * bytes_per_sample)
+        self._audit_log.log("audio.buffer_committed", {
+            "total_chunks": self._input_audio_chunks,
+            "total_bytes": self._input_audio_bytes,
+            "audio_duration_s": round(audio_duration_s, 3),
+        })
+        # Reset input counters after commit
+        self._input_audio_chunks = 0
+        self._input_audio_bytes = 0
 
     async def create_response(self) -> None:
         """Trigger response generation from the model.
@@ -385,10 +419,46 @@ class RealtimeSession(BaseSession):
         elif event_type == "response.audio.delta":
             audio_b64 = event.get("delta", "")
             audio_bytes = base64.b64decode(audio_b64)
-            self._emit("audio.delta", audio_bytes)
+            item_id = event.get("item_id", "")
+            response_id = event.get("response_id", "")
+            # Accumulate for audit
+            if item_id not in self._audio_output_accumulator:
+                self._audio_output_accumulator[item_id] = {
+                    "chunk_count": 0,
+                    "total_bytes": 0,
+                    "start_time": time.time(),
+                }
+            self._audio_output_accumulator[item_id]["chunk_count"] += 1
+            self._audio_output_accumulator[item_id]["total_bytes"] += len(audio_bytes)
+            self._emit("audio.delta", AudioDelta(
+                audio_bytes=audio_bytes,
+                item_id=item_id,
+                response_id=response_id,
+            ))
 
         elif event_type == "response.audio.done":
-            self._emit("audio.done", {"response_id": event.get("response_id", "")})
+            item_id = event.get("item_id", "")
+            response_id = event.get("response_id", "")
+            # Audit log with accumulated audio stats
+            acc = self._audio_output_accumulator.pop(item_id, None)
+            if acc is not None:
+                duration_ms = (time.time() - acc["start_time"]) * 1000
+                sample_rate = self._config.audio_format.sample_rate
+                channels = self._config.audio_format.channels
+                bytes_per_sample = 2  # PCM16 = 2 bytes per sample
+                audio_duration_s = acc["total_bytes"] / (sample_rate * channels * bytes_per_sample)
+                self._audit_log.log("audio.output_completed", {
+                    "item_id": item_id,
+                    "response_id": response_id,
+                    "chunk_count": acc["chunk_count"],
+                    "total_bytes": acc["total_bytes"],
+                    "audio_duration_s": round(audio_duration_s, 3),
+                    "streaming_duration_ms": round(duration_ms, 1),
+                })
+            self._emit("audio.done", AudioDone(
+                item_id=item_id,
+                response_id=response_id,
+            ))
 
         # Tool calls
         elif event_type == "response.function_call_arguments.done":

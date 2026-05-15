@@ -1640,6 +1640,72 @@ async with RealtimeSession() as session:
     session.on("error", on_error)
 ```
 
+#### AudioDelta
+
+**Type:** `@dataclass`
+
+Output audio chunk event from model response, emitted for each audio packet during streaming.
+
+**Fields:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `audio_bytes` | `bytes` | Base64-decoded PCM16 audio data (24kHz, mono, 16-bit) |
+| `item_id` | `str` | Unique identifier for the response item |
+| `response_id` | `str` | Unique identifier for the response |
+
+**Emitted for:** `response.audio.delta` WebSocket events
+
+**Usage:**
+
+```python
+from openai_apis import RealtimeSession, AudioDelta
+
+async with RealtimeSession() as session:
+    def on_audio_chunk(event: AudioDelta):
+        # Play audio chunk immediately for low-latency playback
+        audio_player.write(event.audio_bytes)
+        print(f"Audio chunk: {len(event.audio_bytes)} bytes")
+
+    session.on("audio.delta", on_audio_chunk)
+```
+
+#### AudioDone
+
+**Type:** `@dataclass`
+
+Audio stream completion marker, emitted when all audio chunks for a response have been delivered.
+
+**Fields:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `item_id` | `str` | Unique identifier for the response item |
+| `response_id` | `str` | Unique identifier for the response |
+
+**Emitted for:** `response.audio.done` WebSocket events
+
+**Usage:**
+
+```python
+from openai_apis import RealtimeSession, AudioDone
+
+async with RealtimeSession() as session:
+    def on_audio_complete(event: AudioDone):
+        print(f"Audio stream complete for item {event.item_id}")
+        audio_player.flush()
+
+    session.on("audio.done", on_audio_complete)
+```
+
+**Audit Logging:**
+
+When `audio.done` is emitted, an `audio.output_completed` audit event is automatically logged with:
+- `chunk_count`: Number of audio chunks received
+- `total_bytes`: Total bytes of audio data
+- `audio_duration_s`: Duration of audio in seconds (calculated from byte count)
+- `streaming_duration_ms`: Wall-clock time from first chunk to completion
+
 ---
 
 ### RealtimeSession
@@ -1686,8 +1752,8 @@ Register a callback for session events.
 
 | Event | Data Type | Description |
 |-------|-----------|-------------|
-| `"audio.delta"` | `bytes` | Output audio chunk (base64-decoded PCM16 bytes) |
-| `"audio.done"` | `dict` | Output audio stream complete (contains `response_id`) |
+| `"audio.delta"` | `AudioDelta` | Output audio chunk (typed event with `audio_bytes`, `item_id`, `response_id`) |
+| `"audio.done"` | `AudioDone` | Output audio stream complete (typed event with `item_id`, `response_id`) |
 | `"transcript.input"` | `TranscriptCompleted` | Input transcription (user speech as text) |
 | `"transcript.output"` | `TranscriptCompleted` | Output transcription (model speech as text) |
 | `"transcript.delta"` | `TranscriptDelta` | Partial transcription updates (~200-500ms intervals) |
@@ -1703,12 +1769,12 @@ Plus inherited `BaseSession` events: `"session.created"`, `"state_changed"`, `"s
 - Multiple callbacks can be registered for the same event
 - Callbacks are invoked in the receive loop (async context)
 - Each callback is wrapped in try/except to prevent one failing callback from blocking others
-- Typed event objects for transcript events (`TranscriptDelta`, `TranscriptCompleted`, `ErrorEvent`)
+- Typed event objects for all streaming events (`AudioDelta`, `AudioDone`, `TranscriptDelta`, `TranscriptCompleted`, `ErrorEvent`)
 
 **Example:**
 
 ```python
-from openai_apis import RealtimeSession, TranscriptDelta, TranscriptCompleted
+from openai_apis import RealtimeSession, TranscriptDelta, TranscriptCompleted, AudioDelta
 
 async with RealtimeSession() as session:
     # Register delta callback for streaming transcripts
@@ -1724,9 +1790,9 @@ async with RealtimeSession() as session:
     session.on("transcript.input", on_complete)
 
     # Register audio chunk callback
-    def on_audio(chunk: bytes):
-        # Process audio bytes
-        play_audio(chunk)
+    def on_audio(event: AudioDelta):
+        # Process audio bytes from typed event
+        play_audio(event.audio_bytes)
 
     session.on("audio.delta", on_audio)
 ```
@@ -1739,6 +1805,7 @@ Send base64-encoded PCM16 audio chunk to the server.
   - `chunk` (`bytes`): Raw PCM16 audio bytes
 - **Returns:** `None`
 - **Raises:** `InvalidStateTransition` if not in CONNECTED state
+- **Audit Logging:** Logs `audio.chunk_sent` event with `chunk_size`, `total_chunks`, and `total_bytes` (cumulative)
 
 **`async commit_audio() -> None`**
 
@@ -1746,6 +1813,7 @@ Commit audio buffer (push-to-talk mode). Signals end of user audio input, creati
 
 - **Returns:** `None`
 - **Raises:** `InvalidStateTransition` if not in CONNECTED state
+- **Audit Logging:** Logs `audio.buffer_committed` event with `total_chunks`, `total_bytes`, and `audio_duration_s`; resets input counters for next turn
 
 **`async create_response() -> None`**
 
@@ -2516,6 +2584,8 @@ from openai_apis import (
     RealtimeConfig,
     RealtimeAgentState,
     # Event types for streaming callbacks
+    AudioDelta,
+    AudioDone,
     TranscriptDelta,
     TranscriptCompleted,
     ErrorEvent,
@@ -2527,6 +2597,8 @@ from openai_apis.realtime import (
     RealtimeVoiceAPI,    # backward-compatible alias
     RealtimeConfig,
     RealtimeAgentState,
+    AudioDelta,
+    AudioDone,
     TranscriptDelta,
     TranscriptCompleted,
     ErrorEvent,
@@ -2534,6 +2606,8 @@ from openai_apis.realtime import (
 
 # Event types can also be imported from the events module
 from openai_apis.realtime.events import (
+    AudioDelta,
+    AudioDone,
     TranscriptDelta,
     TranscriptCompleted,
     ErrorEvent,
@@ -2569,7 +2643,7 @@ from openai_apis import (
 
     # Realtime
     RealtimeSession, RealtimeVoiceAPI, RealtimeConfig, RealtimeAgentState,
-    TranscriptDelta, TranscriptCompleted, ErrorEvent,
+    AudioDelta, AudioDone, TranscriptDelta, TranscriptCompleted, ErrorEvent,
 )
 ```
 
