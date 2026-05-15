@@ -689,6 +689,18 @@ class TestRealtimeSessionEventHandling:
         assert callback_data[1].accumulated == "Hello world"
 
     @pytest.mark.asyncio
+    async def test_non_json_message_handled_gracefully(self):
+        """Non-JSON messages are logged but don't crash the session."""
+        messages = make_handshake_messages() + ["not-valid-json{{{"]
+        mock_ws = MockWebSocket(messages)
+
+        with patch("openai_apis.realtime.session.websockets.connect",
+                   side_effect=mock_websockets_connect(mock_ws)):
+            async with RealtimeSession() as session:
+                await asyncio.sleep(0.1)
+                # No crash - session still connected
+
+    @pytest.mark.asyncio
     async def test_unknown_event_logged(self):
         """No error for unknown event types."""
         messages = make_handshake_messages() + [
