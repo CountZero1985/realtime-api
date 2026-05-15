@@ -8,12 +8,16 @@ from openai_apis.tts._registry import TTSRegistry, register_provider, get_provid
 # Backward compatibility alias
 TTSAPI = OpenAITTSProvider
 
+# Public alias for BaseTTSProvider (issue #33)
+TTSProvider = BaseTTSProvider
+
 __all__ = [
     "OpenAITTSProvider",
     "ElevenLabsTTSProvider",
     "TTSAPI",
     "TTSConfig",
     "BaseTTSProvider",
+    "TTSProvider",
     "TTSSynthesisError",
     "TTSRegistry",
     "register_provider",
