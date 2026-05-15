@@ -1028,3 +1028,153 @@ class TestRealtimeSessionToolExecutionFailure:
         event_types = [e.event_type for e in events]
         assert "tool.execution.started" in event_types
         assert "tool.execution.failed" in event_types
+
+
+class TestRealtimeSessionReceiveLoopErrors:
+    """Test receive loop error handling (Step 5)."""
+
+    @pytest.mark.asyncio
+    async def test_receive_loop_generic_exception_emits_error(self):
+        """Generic exception in receive loop emits 'error' event with type 'receive_loop_error'."""
+
+        class ErrorMockWebSocket(MockWebSocket):
+            """Mock WebSocket that raises RuntimeError after handshake."""
+
+            async def __anext__(self):
+                """Raise RuntimeError after returning handshake messages."""
+                if self.message_index < len(self.messages):
+                    msg = self.messages[self.message_index]
+                    self.message_index += 1
+                    return msg
+                # After handshake, raise RuntimeError
+                raise RuntimeError("Simulated receive loop error")
+
+        messages = make_handshake_messages()
+        mock_ws = ErrorMockWebSocket(messages)
+        callback_data = []
+
+        def error_callback(data):
+            callback_data.append(data)
+
+        with patch("openai_apis.realtime.session.websockets.connect",
+                   side_effect=mock_websockets_connect(mock_ws)):
+            async with RealtimeSession() as session:
+                session.on("error", error_callback)
+                await asyncio.sleep(0.1)  # Let receive loop encounter the error
+
+        # Verify error event was emitted
+        assert len(callback_data) == 1
+        assert callback_data[0]["type"] == "receive_loop_error"
+        assert "Simulated receive loop error" in callback_data[0]["error"]
+
+
+class TestRealtimeSessionReconnection:
+    """Test reconnection logic (Step 6)."""
+
+    @pytest.mark.asyncio
+    async def test_reconnect_success_after_connection_closed(self):
+        """Successful reconnection after connection closed."""
+        # First connection - handshake only
+        mock_ws1 = MockWebSocket(make_handshake_messages())
+
+        # Second connection - successful reconnect
+        mock_ws2 = MockWebSocket(make_handshake_messages())
+
+        call_count = [0]
+
+        async def mock_connect(*args, **kwargs):
+            ws = [mock_ws1, mock_ws2][call_count[0]]
+            call_count[0] += 1
+            return ws
+
+        with patch("openai_apis.realtime.session.websockets.connect", side_effect=mock_connect), \
+             patch("asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
+
+            # Create session with shorter reconnect delay for testing
+            session = RealtimeSession(max_reconnect_attempts=2, reconnect_delay=0.1)
+
+            async with session:
+                # Wait for initial connection
+                await asyncio.sleep(0.05)
+
+                # Simulate connection close by patching _ws to simulate ConnectionClosed
+                import websockets
+                # Trigger reconnection by simulating connection closed in receive loop
+                session._receive_task.cancel()
+                try:
+                    await session._receive_task
+                except asyncio.CancelledError:
+                    pass
+
+                # Manually trigger reconnect
+                await session._reconnect()
+
+            # Verify reconnect was attempted (sleep called with exponential backoff)
+            assert mock_sleep.called
+            # Verify second WebSocket was connected
+            assert call_count[0] == 2
+
+    @pytest.mark.asyncio
+    async def test_reconnect_all_attempts_fail_emits_error(self):
+        """Error emitted after all reconnection attempts fail."""
+        callback_data = []
+
+        def error_callback(data):
+            callback_data.append(data)
+
+        # Mock connect that always fails
+        async def mock_connect_fail(*args, **kwargs):
+            raise Exception("Connection refused")
+
+        with patch("openai_apis.realtime.session.websockets.connect", side_effect=mock_connect_fail), \
+             patch("asyncio.sleep", new_callable=AsyncMock):
+
+            session = RealtimeSession(max_reconnect_attempts=2, reconnect_delay=0.05)
+            session.on("error", error_callback)
+
+            # Attempt reconnect (will fail all attempts)
+            await session._reconnect()
+
+        # Verify error event emitted after exhausting attempts
+        assert len(callback_data) == 1
+        assert callback_data[0]["type"] == "reconnect_failed"
+        assert "Failed after 2 attempts" in callback_data[0]["error"]
+
+    @pytest.mark.asyncio
+    async def test_reconnect_audit_logs_each_attempt(self):
+        """Audit log records reconnect_attempt, reconnect_success, or reconnect_failed."""
+        # First attempt fails, second succeeds
+        call_count = [0]
+
+        async def mock_connect(*args, **kwargs):
+            if call_count[0] == 0:
+                call_count[0] += 1
+                raise Exception("First attempt fails")
+            # Second attempt succeeds
+            call_count[0] += 1
+            return MockWebSocket(make_handshake_messages())
+
+        with patch("openai_apis.realtime.session.websockets.connect", side_effect=mock_connect), \
+             patch("asyncio.sleep", new_callable=AsyncMock):
+
+            session = RealtimeSession(max_reconnect_attempts=3, reconnect_delay=0.1)
+            await session._reconnect()
+
+            events = session.audit_log.events
+
+        # Check audit log events
+        event_types = [e.event_type for e in events]
+        assert "websocket.reconnect_attempt" in event_types
+        assert "websocket.reconnect_success" in event_types
+
+        # Verify attempt count in logs
+        attempt_events = [e for e in events if e.event_type == "websocket.reconnect_attempt"]
+        # Should have 2 attempts (first fails, second succeeds)
+        assert len(attempt_events) == 2
+        assert attempt_events[0].data["attempt"] == 1
+        assert attempt_events[1].data["attempt"] == 2
+
+        # Verify success log
+        success_events = [e for e in events if e.event_type == "websocket.reconnect_success"]
+        assert len(success_events) == 1
+        assert success_events[0].data["attempt"] == 2
