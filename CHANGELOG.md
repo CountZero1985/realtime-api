@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Audio Streaming with Typed Events** - Enhanced realtime audio streaming with typed event objects and comprehensive audit logging (issue #27):
+  - **Typed audio events**: New `AudioDelta` and `AudioDone` dataclasses in `openai_apis/realtime/events.py`
+  - **`AudioDelta`**: Output audio chunk events with `audio_bytes` (decoded PCM16), `item_id`, and `response_id`
+  - **`AudioDone`**: Audio stream completion marker with `item_id` and `response_id`
+  - **Audio output audit logging**: Automatic tracking of output audio streaming with `audio.output_completed` events including chunk count, total bytes, audio duration (seconds), and streaming duration (milliseconds)
+  - **Audio input audit logging**: Per-chunk logging via `audio.chunk_sent` events with cumulative chunk count and total bytes; commit summary via `audio.buffer_committed` events with total statistics and audio duration
+  - **Counter reset on commit**: Input audio counters automatically reset after `commit_audio()` for clean push-to-talk turn tracking
+  - **Duration calculations**: Audio duration calculated from byte count and audio format (sample rate, channels, PCM16 = 2 bytes/sample)
+  - **Per-item accumulation**: Output audio statistics tracked per `item_id` from first delta to done event
+  - **Breaking change**: `audio.delta` callbacks now receive `AudioDelta` objects instead of raw `bytes` (access via `.audio_bytes`); `audio.done` callbacks receive `AudioDone` objects instead of `dict` (access via `.item_id` and `.response_id`)
+  - Comprehensive unit tests in `tests/unit/test_realtime_session.py` covering typed events, multi-chunk scenarios, and audit logging
+
 ### Changed
 
 - **RealtimeConfig modernization** - Updated `RealtimeConfig` to match OpenAI Realtime API specifications (issue #26):

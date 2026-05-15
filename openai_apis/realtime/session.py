@@ -86,16 +86,16 @@ class RealtimeSession(BaseSession):
     from BaseSession. Uses async context manager pattern.
 
     Callback events (registered via session.on()):
-        - "audio.delta": Output audio chunk (bytes, base64-decoded)
-        - "audio.done": Output audio stream complete
-        - "transcript.input": Input transcription (user speech as text)
-        - "transcript.output": Output transcription (model speech as text)
+        - "audio.delta": Output audio chunk (AudioDelta with audio_bytes, item_id, response_id)
+        - "audio.done": Output audio stream complete (AudioDone with item_id, response_id)
+        - "transcript.input": Input transcription (TranscriptCompleted)
+        - "transcript.output": Output transcription (TranscriptCompleted)
         - "transcript.delta": Partial transcription (TranscriptDelta)
-        - "tool.call": Tool/function call request from model
-        - "response.done": Response generation complete
-        - "error": Error from server
-        - "session.created": Server session created
-        - "session.updated": Server session configured
+        - "tool.call": Tool/function call request from model (dict)
+        - "response.done": Response generation complete (dict)
+        - "error": Error from server (ErrorEvent)
+        - "session.created": Server session created (dict)
+        - "session.updated": Server session configured (dict)
     """
 
     WEBSOCKET_URL = "wss://api.openai.com/v1/realtime"
@@ -205,6 +205,10 @@ class RealtimeSession(BaseSession):
 
         Raises:
             InvalidStateTransition: If not in CONNECTED state.
+
+        Audit Logging:
+            Logs 'audio.chunk_sent' event with chunk_size, total_chunks, and
+            total_bytes (cumulative since last commit).
         """
         self._assert_connected("send_audio")
         audio_b64 = base64.b64encode(chunk).decode("ascii")
@@ -221,9 +225,14 @@ class RealtimeSession(BaseSession):
         """Commit audio buffer (push-to-talk).
 
         Signals end of user audio input, creating a conversation item.
+        Resets input audio counters for next turn.
 
         Raises:
             InvalidStateTransition: If not in CONNECTED state.
+
+        Audit Logging:
+            Logs 'audio.buffer_committed' event with total_chunks, total_bytes,
+            and audio_duration_s calculated from accumulated data.
         """
         self._assert_connected("commit_audio")
         await self._send_event({"type": "input_audio_buffer.commit"})

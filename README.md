@@ -241,9 +241,9 @@ async def main():
         def on_transcript(data):
             print(f"User said: {data.transcript}")
 
-        def on_audio(chunk: bytes):
-            # Process audio bytes (e.g., play to speaker)
-            play_audio(chunk)
+        def on_audio(event):
+            # Process typed audio event (AudioDelta)
+            play_audio(event.audio_bytes)
 
         session.on("transcript.input", on_transcript)
         session.on("audio.delta", on_audio)
@@ -261,6 +261,8 @@ asyncio.run(main())
 ```python
 from openai_apis import (
     RealtimeSession,
+    AudioDelta,
+    AudioDone,
     TranscriptDelta,
     TranscriptCompleted,
     ErrorEvent
@@ -281,6 +283,16 @@ async def main():
 
         session.on("transcript.input", on_completed)
         session.on("transcript.output", on_completed)
+
+        # Register audio streaming callbacks
+        def on_audio(event: AudioDelta):
+            play_audio(event.audio_bytes)
+
+        def on_audio_done(event: AudioDone):
+            print(f"\n[Audio complete for {event.item_id}]")
+
+        session.on("audio.delta", on_audio)
+        session.on("audio.done", on_audio_done)
 
         # Register error handler
         def on_error(event: ErrorEvent):
