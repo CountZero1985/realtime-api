@@ -1,32 +1,57 @@
 #!/usr/bin/env python3
 """
-Standalone CLI Interface Module for Agent Interaction
+Interactive CLI Application — openai_apis demo
 
-This module provides a clean, text-based interface for interacting with
-OpenAI Agents SDK agents. It handles conversation history, streaming responses,
-and provides both interactive and single-query modes.
+This module provides both:
+1. Legacy text-based agent interface (CLI, CLIConfig, ConversationHistory) for backward compatibility
+2. Multi-mode interactive CLI demonstrating TranscriptionSession, RealtimeSession, and TTSProvider
 
-Example usage:
+Usage (multi-mode):
+    python examples/cli_app.py transcription --language hu
+    python examples/cli_app.py voice --language hu --voice ash
+    python examples/cli_app.py tts --language hu --voice sage
+
+Usage (legacy agent CLI):
     from examples.cli_app import CLI
     from examples.agents.team import assisstant_agent
-
-    # Interactive mode
     cli = CLI(agent=assisstant_agent)
-    cli.run()
-
-    # Single query mode
-    response = await cli.query("Mi az idő?")
-    print(response)
+    cli.run_sync()
 """
 
+import sys
 import asyncio
+import argparse
 import time
+import numpy as np
 from typing import Any, Optional, Dict, List, Callable
 from dataclasses import dataclass, field
-from agents import Agent, Runner
-from agents.voice.workflow import VoiceWorkflowHelper
-from openai_apis._logging import get_logger, set_correlation_id, log_audit_event, log_performance
+from pathlib import Path
+from datetime import datetime
 
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+# Import only what's needed for multi-mode CLI at module level
+from openai_apis._logging import get_logger, set_correlation_id, log_audit_event, log_performance
+from openai_apis import (
+    TranscriptionSession, TranscriptionConfig,
+    RealtimeSession, RealtimeConfig,
+    TTSConfig, TTSRegistry,
+    VADConfig, AudioFormat,
+    SessionAuditLog,
+)
+from openai_apis.realtime.events import AudioDelta, AudioDone, TranscriptCompleted
+from examples.utils.audio_io import record_audio, AudioPlayer
+from dotenv import load_dotenv
+
+load_dotenv()
+
+# Lazy imports for legacy CLI classes to avoid circular dependencies
+# These are imported inside functions that need them
+
+
+# ============================================================================
+# Legacy CLI classes for backward compatibility with cli_agent.py
+# ============================================================================
 
 @dataclass
 class CLIConfig:
@@ -106,7 +131,7 @@ class CLI:
 
     def __init__(
         self,
-        agent: Agent[Any],
+        agent: "Any",  # Type hint as string to avoid circular import
         config: Optional[CLIConfig] = None,
         state: Optional[Dict[str, Any]] = None,
         on_error: Optional[Callable[[Exception], None]] = None,
@@ -114,6 +139,9 @@ class CLI:
         on_response_end: Optional[Callable[[str], None]] = None,
     ) -> None:
         """Initialize the CLI interface."""
+        # Lazy import to avoid circular dependencies
+        from agents import Agent
+
         self.agent = agent
         self.config = config or CLIConfig()
         self.history = ConversationHistory()
@@ -136,6 +164,10 @@ class CLI:
         stream: bool = True,
     ) -> str:
         """Send a single query and get the response."""
+        # Lazy imports to avoid circular dependencies
+        from agents import Runner
+        from agents.voice.workflow import VoiceWorkflowHelper
+
         # Set correlation ID for this query
         corr_id = set_correlation_id()
         start_time = time.time()
@@ -290,16 +322,222 @@ class CLI:
         return dict(self.state)
 
 
-def start_cli(agent: Agent[Any], config: Optional[CLIConfig] = None) -> None:
+def start_cli(agent: "Any", config: Optional[CLIConfig] = None) -> None:
     """Start an interactive CLI session with the given agent."""
     cli = CLI(agent=agent, config=config)
     cli.run_sync()
 
 
+# ============================================================================
+# New multi-mode CLI functions
+# ============================================================================
+
+def export_audit_log(audit_log: SessionAuditLog, mode: str) -> None:
+    """Export session audit log to JSON file."""
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    filename = f"audit_{mode}_{timestamp}.json"
+    logs_dir = Path("logs")
+    logs_dir.mkdir(exist_ok=True)
+    path = logs_dir / filename
+    audit_log.export_to_file(path)
+    print(f"[Audit log mentve: {path}]")
+
+
+async def run_transcription_mode(language: str) -> None:
+    """Run transcription mode: microphone → TranscriptionSession → text output."""
+    print(f"\n=== Transzkripció mód ({language}) ===")
+    print("Nyomj <Enter>-t a felvételhez, vagy 'q' a kilépéshez.")
+
+    config = TranscriptionConfig(
+        language=language,
+        vad=VADConfig(mode="disabled")  # Push-to-talk mode
+    )
+
+    transcript_done = asyncio.Event()
+
+    def on_transcript_delta(data: dict) -> None:
+        print(data.get("delta", ""), end="", flush=True)
+
+    def on_transcript_completed(data: dict) -> None:
+        print(f"\n[Transzkripció] {data['transcript']}")
+        transcript_done.set()
+
+    try:
+        async with TranscriptionSession(config=config) as session:
+            session.on("transcript.delta", on_transcript_delta)
+            session.on("transcript.completed", on_transcript_completed)
+
+            while True:
+                try:
+                    user_input = input("\n> ").strip()
+                    if user_input.lower() == 'q':
+                        print("Kilépés...")
+                        break
+
+                    print("🎤 Felvétel... (nyomj Ctrl+C a leállításhoz)")
+                    audio_data = record_audio()
+
+                    # Convert numpy array to bytes and send in chunks
+                    audio_bytes = audio_data.tobytes()
+                    chunk_size = 4800  # 100ms at 24kHz mono int16
+                    for i in range(0, len(audio_bytes), chunk_size):
+                        chunk = audio_bytes[i:i + chunk_size]
+                        session.send_audio(chunk)
+
+                    # Commit and wait for result
+                    session.commit_audio()
+                    await asyncio.wait_for(transcript_done.wait(), timeout=10.0)
+                    transcript_done.clear()
+
+                except asyncio.TimeoutError:
+                    print("\n[Hiba] Időtúllépés - nincs transzkripció")
+                except KeyboardInterrupt:
+                    print("\n[Felvétel megszakítva]")
+                    continue
+
+    except KeyboardInterrupt:
+        print("\nKilépés...")
+    finally:
+        export_audit_log(session.audit_log, "transcription")
+
+
+async def run_voice_mode(language: str, voice: str) -> None:
+    """Run voice chat mode: microphone → RealtimeSession → AI voice response."""
+    print(f"\n=== Hang mód ({language}, {voice}) ===")
+    print("Nyomj <Enter>-t a beszédhez, vagy 'q' a kilépéshez.")
+
+    config = RealtimeConfig(
+        language=language,
+        voice=voice,
+        vad=VADConfig(mode="disabled")  # Push-to-talk mode
+    )
+
+    response_done = asyncio.Event()
+    player: Optional[AudioPlayer] = None
+
+    def on_audio_delta(event: AudioDelta) -> None:
+        if player:
+            audio_np = np.frombuffer(event.audio_bytes, dtype=np.int16)
+            player.add_audio(audio_np)
+
+    def on_audio_done(event: AudioDone) -> None:
+        response_done.set()
+
+    def on_input_transcript(event: TranscriptCompleted) -> None:
+        print(f"\n[Te] {event.transcript}")
+
+    def on_output_transcript(event: TranscriptCompleted) -> None:
+        print(f"[Asszisztens] {event.transcript}")
+
+    def on_error(data: dict) -> None:
+        print(f"\n[Hiba] {data.get('error', {}).get('message', 'Unknown error')}")
+
+    try:
+        async with RealtimeSession(config=config) as session:
+            session.on("audio.delta", on_audio_delta)
+            session.on("audio.done", on_audio_done)
+            session.on("transcript.input", on_input_transcript)
+            session.on("transcript.output", on_output_transcript)
+            session.on("error", on_error)
+
+            with AudioPlayer() as audio_player:
+                player = audio_player
+
+                while True:
+                    try:
+                        user_input = input("\n> ").strip()
+                        if user_input.lower() == 'q':
+                            print("Kilépés...")
+                            break
+
+                        print("🎤 Beszélj... (nyomj Ctrl+C a leállításhoz)")
+                        audio_data = record_audio()
+
+                        # Send audio in chunks
+                        audio_bytes = audio_data.tobytes()
+                        chunk_size = 4800  # 100ms at 24kHz mono int16
+                        for i in range(0, len(audio_bytes), chunk_size):
+                            chunk = audio_bytes[i:i + chunk_size]
+                            session.send_audio(chunk)
+
+                        # Commit audio and request response
+                        session.commit_audio()
+                        session.create_response()
+
+                        # Wait for AI response
+                        await asyncio.wait_for(response_done.wait(), timeout=30.0)
+                        response_done.clear()
+
+                    except asyncio.TimeoutError:
+                        print("\n[Hiba] Időtúllépés - nincs válasz")
+                    except KeyboardInterrupt:
+                        print("\n[Felvétel megszakítva]")
+                        continue
+
+    except KeyboardInterrupt:
+        print("\nKilépés...")
+    finally:
+        export_audit_log(session.audit_log, "voice")
+
+
+async def run_tts_mode(language: str, voice: str) -> None:
+    """Run TTS mode: text input → TTSProvider → audio output."""
+    print(f"\n=== TTS mód ({language}, {voice}) ===")
+    print("Írj be szöveget, vagy 'q' a kilépéshez.")
+
+    config = TTSConfig(voice=voice, language=language, output_format="pcm")
+    tts = TTSRegistry.create(config)
+
+    try:
+        with AudioPlayer() as player:
+            while True:
+                text = input("\nSzöveg> ").strip()
+                if text.lower() == 'q':
+                    print("Kilépés...")
+                    break
+                if not text:
+                    continue
+
+                try:
+                    print("🔊 Lejátszás...")
+                    async for chunk in tts.synthesize_stream(text, voice=voice):
+                        audio_np = np.frombuffer(chunk, dtype=np.int16)
+                        player.add_audio(audio_np)
+                except Exception as e:
+                    print(f"[Hiba] {e}")
+
+    except KeyboardInterrupt:
+        print("\nKilépés...")
+    finally:
+        print("[TTS mód használja globális audit naplózást - nincs session export]")
+
+
+def parse_args() -> argparse.Namespace:
+    """Parse command-line arguments."""
+    parser = argparse.ArgumentParser(description="Interactive CLI — openai_apis demo")
+    parser.add_argument(
+        "mode",
+        choices=["transcription", "voice", "tts"],
+        help="Operating mode: transcription, voice, or tts",
+    )
+    parser.add_argument("--language", "-l", default="hu", help="Language code (ISO 639-1, default: hu)")
+    parser.add_argument("--voice", "-v", default="ash", help="Voice for TTS/voice mode (default: ash)")
+    return parser.parse_args()
+
+
+def main() -> None:
+    """Main entry point for multi-mode CLI."""
+    args = parse_args()
+    try:
+        if args.mode == "transcription":
+            asyncio.run(run_transcription_mode(language=args.language))
+        elif args.mode == "voice":
+            asyncio.run(run_voice_mode(language=args.language, voice=args.voice))
+        elif args.mode == "tts":
+            asyncio.run(run_tts_mode(language=args.language, voice=args.voice))
+    except KeyboardInterrupt:
+        print("\nProgram vége.")
+
+
 if __name__ == "__main__":
-    print("CLI module - import this to use with your agents")
-    print("\nExample:")
-    print("  from examples.cli_app import CLI")
-    print("  from examples.agents.team import assisstant_agent")
-    print("  cli = CLI(agent=assisstant_agent)")
-    print("  cli.run_sync()")
+    main()
