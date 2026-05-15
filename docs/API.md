@@ -27,6 +27,11 @@ Complete API reference for the `openai_apis` Python package, covering transcript
   - [ToolRegistry](#toolregistry)
   - [RealtimeAgentState](#realtimeagentstate)
   - [RealtimeSession](#realtimesession)
+- [MCP Plugin System](#mcp-plugin-system)
+  - [MCPPlugin](#mcpplugin)
+  - [MCPPluginManager](#mcppluginmanager)
+  - [FileSystemPlugin](#filesystemplugin)
+  - [GmailPlugin](#gmailplugin)
 - [Session Infrastructure](#session-infrastructure)
   - [SessionState](#sessionstate)
   - [InvalidStateTransition](#invalidstatetransition)
@@ -41,11 +46,12 @@ Complete API reference for the `openai_apis` Python package, covering transcript
 
 ## Overview
 
-The `openai_apis` package provides a unified Python interface for OpenAI's voice and text services, with three core API modules:
+The `openai_apis` package provides a unified Python interface for OpenAI's voice and text services, with three core API modules and an extensible plugin system:
 
 - **Transcription API** - Speech-to-text using Whisper models
 - **TTS API** - Text-to-speech synthesis with multiple voices
 - **Realtime Voice API** - Low-latency WebSocket-based voice interaction
+- **MCP Plugin System** - Model Context Protocol plugin architecture for extensible tool integration
 
 All modules share common infrastructure for configuration, session management, audio format handling, and audit logging.
 
@@ -1903,6 +1909,42 @@ When `audio.done` is emitted, an `audio.output_completed` audit event is automat
 - `audio_duration_s`: Duration of audio in seconds (calculated from byte count)
 - `streaming_duration_ms`: Wall-clock time from first chunk to completion
 
+#### ConversationItem
+
+**Type:** `@dataclass`
+
+A conversation history entry with role and content. Automatically tracked by `RealtimeSession` from completed transcription events.
+
+**Fields:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `role` | `str` | Speaker role: `"user"` or `"assistant"` |
+| `content` | `str` | Transcript text |
+| `item_id` | `str` | OpenAI conversation item ID |
+
+**Usage:**
+
+`ConversationItem` objects are created automatically by `RealtimeSession` when transcription events complete. Access them via `session.get_conversation_history()`:
+
+```python
+from openai_apis import RealtimeSession
+
+async with RealtimeSession() as session:
+    # ... conversation happens ...
+
+    # Get conversation history
+    history = session.get_conversation_history()
+    # Returns: [{"role": "user", "content": "..."}, {"role": "assistant", "content": "..."}]
+
+    # Or access raw ConversationItem objects from session internals (not recommended)
+    # items: list[ConversationItem] = session._conversation_history
+```
+
+**Tracked from events:**
+- `conversation.item.input_audio_transcription.completed` (user speech)
+- `response.audio_transcript.done` (assistant speech)
+
 ---
 
 ### RealtimeSession
@@ -1955,7 +1997,10 @@ Register a callback for session events.
 | `"transcript.output"` | `TranscriptCompleted` | Output transcription (model speech as text) |
 | `"transcript.delta"` | `TranscriptDelta` | Partial transcription updates (~200-500ms intervals) |
 | `"tool.call"` | `dict` | Tool/function call request (contains `call_id`, `name`, `arguments`) |
-| `"response.done"` | `dict` | Response generation complete (contains `response_id`) |
+| `"response.created"` | `dict` | Response generation started (contains `id` and `status`) |
+| `"response.done"` | `dict` | Response generation complete (contains `response_id` and `status`) |
+| `"response.interrupted"` | `dict` | Response interrupted by user speech (contains `response_id` and `trigger`) |
+| `"input_audio_buffer.speech_started"` | `dict` | VAD detected user speech start (raw event data) |
 | `"error"` | `ErrorEvent` | Error events from the API |
 | `"session.created"` | `dict` | Server session created (contains session metadata) |
 | `"session.updated"` | `dict` | Server session configured (contains session metadata) |
@@ -2037,6 +2082,41 @@ Send tool call result back to the model.
   - `result` (`str`): JSON string result of the tool invocation
 - **Returns:** `None`
 - **Raises:** `InvalidStateTransition` if not in CONNECTED state
+
+**`async cancel_response() -> None`**
+
+Cancel the current in-progress response (barge-in).
+
+Sends a `response.cancel` event to the server. The server will stop generating audio/text and emit `response.done` with status "cancelled".
+
+- **Returns:** `None`
+- **Raises:** `InvalidStateTransition` if not in CONNECTED state
+- **Audit Logging:** Logs `response.cancel_sent` event with `response_id` if available
+
+**`get_conversation_history() -> list[dict[str, str]]`**
+
+Get conversation history as a list of role/content dicts.
+
+Returns the automatically tracked conversation history including all completed user and assistant transcriptions.
+
+- **Returns:** List of dicts with `"role"` and `"content"` keys
+  ```python
+  [
+      {"role": "user", "content": "Hello"},
+      {"role": "assistant", "content": "Hi there!"},
+      {"role": "user", "content": "How are you?"}
+  ]
+  ```
+- **Note:** This is a synchronous method (no `await` needed)
+
+**`async clear_conversation() -> None`**
+
+Clear the in-memory conversation history.
+
+Resets the tracked conversation items list to empty. Useful for starting a fresh conversation or managing memory in long sessions.
+
+- **Returns:** `None`
+- **Audit Logging:** Logs `conversation.cleared` event with `items_cleared` count
 
 #### Usage Examples
 
@@ -2225,6 +2305,425 @@ async def main():
         # Or access events directly
         for event in session.audit_log.events:
             print(f"{event.timestamp}: {event.event_type}")
+
+asyncio.run(main())
+```
+
+**Response interruption (barge-in) and conversation history:**
+
+```python
+from openai_apis import RealtimeSession, RealtimeConfig
+
+async def main():
+    config = RealtimeConfig(
+        voice="sage",
+        language="hu",
+        instructions="You are a helpful assistant."
+    )
+
+    async with RealtimeSession(config) as session:
+        # Track conversation history automatically
+        def on_user_transcript(event):
+            print(f"User: {event.transcript}")
+
+        def on_assistant_transcript(event):
+            print(f"Assistant: {event.transcript}")
+
+        session.on("transcript.input", on_user_transcript)
+        session.on("transcript.output", on_assistant_transcript)
+
+        # Handle interruption detection (VAD auto-interrupt)
+        def on_interrupted(data):
+            print(f"⚠️ Response {data['response_id']} interrupted by user speech")
+            # Stop audio playback here
+            stop_audio_playback()
+
+        session.on("response.interrupted", on_interrupted)
+
+        # Send user audio
+        await session.send_audio(audio_chunk)
+        await session.commit_audio()
+        await session.create_response()
+
+        # Wait for response...
+        await asyncio.sleep(2)
+
+        # Manual cancellation (push-to-talk interruption)
+        if user_pressed_button():
+            await session.cancel_response()
+            print("✋ Response cancelled by user")
+
+        # Get conversation history at any time
+        history = session.get_conversation_history()
+        print("\n📜 Conversation history:")
+        for turn in history:
+            print(f"  {turn['role']}: {turn['content']}")
+
+        # Clear history for fresh conversation
+        await session.clear_conversation()
+        print("🗑️ History cleared")
+
+asyncio.run(main())
+```
+
+**VAD-based automatic interruption detection:**
+
+```python
+from openai_apis import RealtimeSession, RealtimeConfig, VADConfig
+
+async def main():
+    # Enable server VAD for automatic turn detection
+    config = RealtimeConfig(
+        voice="sage",
+        vad=VADConfig(mode="server_vad", threshold=0.7, silence_duration_ms=800)
+    )
+
+    async with RealtimeSession(config) as session:
+        # Detect when user starts speaking during assistant response
+        def on_speech_started(data):
+            print("🎤 User started speaking")
+
+        session.on("input_audio_buffer.speech_started", on_speech_started)
+
+        # Automatic interruption event (triggered by VAD)
+        def on_auto_interrupt(data):
+            response_id = data["response_id"]
+            trigger = data["trigger"]  # "vad_speech_started"
+            print(f"⚡ Auto-interrupted {response_id} via {trigger}")
+            # Server handles cancellation automatically - just stop playback
+            stop_audio_playback()
+
+        session.on("response.interrupted", on_auto_interrupt)
+
+        # Track response lifecycle
+        def on_response_created(data):
+            print(f"🚀 Response {data['id']} started")
+
+        def on_response_done(data):
+            status = data["status"]  # "completed" or "cancelled"
+            print(f"✅ Response {data['response_id']} finished: {status}")
+
+        session.on("response.created", on_response_created)
+        session.on("response.done", on_response_done)
+
+        # Normal conversation flow
+        await session.send_audio(audio_chunk)
+        await session.commit_audio()
+        await session.create_response()
+
+asyncio.run(main())
+```
+
+---
+
+## MCP Plugin System
+
+Model Context Protocol (MCP) plugin architecture for extensible tool integration. The MCP system provides an abstract plugin interface, a plugin manager for registration and dispatch, and stub implementations for filesystem and Gmail operations.
+
+### MCPPlugin
+
+Abstract base class for MCP plugins. Subclasses define plugin metadata, tool definitions, and execution logic.
+
+**Import:** `from openai_apis import MCPPlugin`
+
+**Abstract Members:**
+
+- `name` (property) - Unique plugin identifier (e.g., "filesystem", "gmail")
+- `description` (property) - Human-readable plugin description
+- `get_tools()` - Returns list of tool definitions in OpenAI function-calling JSON Schema format
+- `execute_tool(name, arguments)` - Async method that executes a named tool with given arguments
+
+**Tool Definition Format:**
+
+Each tool definition is a dict with the following structure:
+
+```python
+{
+    "type": "function",
+    "name": "tool_name",
+    "description": "Tool description",
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "param1": {"type": "string", "description": "Parameter description"},
+            # ... more parameters
+        },
+        "required": ["param1"]
+    }
+}
+```
+
+**Example Implementation:**
+
+```python
+from openai_apis import MCPPlugin
+
+class CustomPlugin(MCPPlugin):
+    @property
+    def name(self) -> str:
+        return "custom"
+
+    @property
+    def description(self) -> str:
+        return "Custom plugin for demonstration"
+
+    def get_tools(self) -> list[dict]:
+        return [
+            {
+                "type": "function",
+                "name": "custom_action",
+                "description": "Performs a custom action",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "text": {
+                            "type": "string",
+                            "description": "Input text to process"
+                        }
+                    },
+                    "required": ["text"]
+                }
+            }
+        ]
+
+    async def execute_tool(self, name: str, arguments: dict) -> str:
+        if name == "custom_action":
+            text = arguments["text"]
+            return f"Processed: {text.upper()}"
+        raise ValueError(f"Unknown tool: {name}")
+```
+
+### MCPPluginManager
+
+Plugin registry and dispatcher for managing MCP plugins, aggregating tools, and routing tool execution.
+
+**Import:** `from openai_apis import MCPPluginManager`
+
+**Methods:**
+
+#### `__init__()`
+
+Initialize an empty plugin manager.
+
+```python
+manager = MCPPluginManager()
+```
+
+#### `register(plugin: MCPPlugin) -> None`
+
+Register an MCP plugin.
+
+**Raises:**
+- `TypeError` - If plugin is not an MCPPlugin instance
+- `ValueError` - If plugin name is already registered or any tool name collides with existing tools
+
+**Example:**
+
+```python
+from openai_apis import MCPPluginManager, FileSystemPlugin, GmailPlugin
+
+manager = MCPPluginManager()
+manager.register(FileSystemPlugin())
+manager.register(GmailPlugin())
+```
+
+#### `get_all_tools() -> list[dict]`
+
+Aggregate tool definitions from all registered plugins.
+
+**Returns:** List of tool definition dicts in OpenAI function-calling format.
+
+**Example:**
+
+```python
+tools = manager.get_all_tools()
+for tool in tools:
+    print(f"{tool['name']}: {tool['description']}")
+```
+
+#### `async execute(tool_name: str, arguments: dict) -> str`
+
+Dispatch tool execution to the appropriate plugin.
+
+**Parameters:**
+- `tool_name` - Name of the tool to execute
+- `arguments` - Dict of tool arguments matching the tool's parameters schema
+
+**Returns:** String result from the tool execution.
+
+**Raises:**
+- `KeyError` - If tool_name is not registered
+
+**Example:**
+
+```python
+result = await manager.execute("read_file", {"path": "/tmp/data.txt"})
+print(result)
+```
+
+#### `populate_tool_registry(registry: ToolRegistry) -> None`
+
+Register all MCP plugin tools into a ToolRegistry for Realtime API integration.
+
+This method bridges MCP plugins into the Realtime API's `ToolRegistry` so MCP tools appear as regular function-calling tools. The ToolRegistry handles JSON serialization and deserialization automatically.
+
+**Parameters:**
+- `registry` - ToolRegistry instance to populate
+
+**Example:**
+
+```python
+from openai_apis import MCPPluginManager, ToolRegistry, FileSystemPlugin
+
+# Create manager and register plugins
+manager = MCPPluginManager()
+manager.register(FileSystemPlugin())
+
+# Bridge to ToolRegistry
+registry = ToolRegistry()
+manager.populate_tool_registry(registry)
+
+# Now MCP tools are available in the registry
+print(registry.tool_names)  # ['read_file', 'write_file']
+```
+
+**Properties:**
+
+- `plugin_names` - List of registered plugin names (sorted)
+- `__len__()` - Number of registered plugins
+- `__bool__()` - True if any plugins are registered
+
+**Full Example:**
+
+```python
+import asyncio
+from openai_apis import MCPPluginManager, FileSystemPlugin, GmailPlugin
+
+async def main():
+    # Initialize manager
+    manager = MCPPluginManager()
+
+    # Register plugins
+    manager.register(FileSystemPlugin())
+    manager.register(GmailPlugin())
+
+    # Inspect registered plugins
+    print(f"Registered plugins: {manager.plugin_names}")
+    print(f"Plugin count: {len(manager)}")
+    print(f"Has plugins: {bool(manager)}")
+
+    # Get all tools
+    tools = manager.get_all_tools()
+    print(f"Available tools: {[t['name'] for t in tools]}")
+
+    # Execute a tool (will raise NotImplementedError for stubs)
+    try:
+        result = await manager.execute("read_file", {"path": "/tmp/test.txt"})
+        print(result)
+    except NotImplementedError as e:
+        print(f"Tool not implemented: {e}")
+
+asyncio.run(main())
+```
+
+### FileSystemPlugin
+
+Stub MCP plugin for file system operations. Provides tool definitions but raises `NotImplementedError` on execution (placeholder for future implementation).
+
+**Import:** `from openai_apis import FileSystemPlugin`
+
+**Plugin Name:** `"filesystem"`
+
+**Tools:**
+- `read_file(path: str)` - Read contents of a file
+- `write_file(path: str, content: str)` - Write contents to a file
+
+**Example:**
+
+```python
+from openai_apis import MCPPluginManager, FileSystemPlugin
+
+manager = MCPPluginManager()
+manager.register(FileSystemPlugin())
+
+# Get tool definitions
+tools = manager.get_all_tools()
+print([t['name'] for t in tools])  # ['read_file', 'write_file']
+
+# Execution raises NotImplementedError
+try:
+    result = await manager.execute("read_file", {"path": "/tmp/data.txt"})
+except NotImplementedError as e:
+    print(f"Not implemented: {e}")
+```
+
+### GmailPlugin
+
+Stub MCP plugin for Gmail operations. Provides tool definitions but raises `NotImplementedError` on execution (placeholder for future implementation).
+
+**Import:** `from openai_apis import GmailPlugin`
+
+**Plugin Name:** `"gmail"`
+
+**Tools:**
+- `send_email(to: str, subject: str, body: str)` - Send an email via Gmail
+- `read_emails(max_results: int = None)` - Read recent emails from Gmail inbox
+
+**Example:**
+
+```python
+from openai_apis import MCPPluginManager, GmailPlugin
+
+manager = MCPPluginManager()
+manager.register(GmailPlugin())
+
+# Get tool definitions
+tools = manager.get_all_tools()
+print([t['name'] for t in tools])  # ['send_email', 'read_emails']
+
+# Execution raises NotImplementedError
+try:
+    result = await manager.execute("send_email", {
+        "to": "user@example.com",
+        "subject": "Test",
+        "body": "Hello"
+    })
+except NotImplementedError as e:
+    print(f"Not implemented: {e}")
+```
+
+**Integration with Realtime API:**
+
+```python
+import asyncio
+from openai_apis import (
+    MCPPluginManager,
+    FileSystemPlugin,
+    GmailPlugin,
+    ToolRegistry,
+    RealtimeSession,
+    RealtimeConfig
+)
+
+async def main():
+    # Create MCP plugin manager and register plugins
+    mcp_manager = MCPPluginManager()
+    mcp_manager.register(FileSystemPlugin())
+    mcp_manager.register(GmailPlugin())
+
+    # Create ToolRegistry and populate with MCP tools
+    registry = ToolRegistry()
+    mcp_manager.populate_tool_registry(registry)
+
+    # Create Realtime session with MCP tools
+    config = RealtimeConfig(tools=registry)
+
+    async with RealtimeSession(config=config) as session:
+        # MCP tools are now available to the Realtime API
+        print(f"Available tools: {registry.tool_names}")
+
+        # Session will automatically execute MCP tools when called by the model
+        # (Note: stub plugins will raise NotImplementedError)
 
 asyncio.run(main())
 ```
@@ -2787,6 +3286,7 @@ from openai_apis import (
     TranscriptDelta,
     TranscriptCompleted,
     ErrorEvent,
+    ConversationItem,    # Conversation history entry
 )
 
 # Submodule imports also supported
@@ -2801,6 +3301,7 @@ from openai_apis.realtime import (
     TranscriptDelta,
     TranscriptCompleted,
     ErrorEvent,
+    ConversationItem,    # Conversation history entry
 )
 
 # Event types can also be imported from the events module
@@ -2810,6 +3311,7 @@ from openai_apis.realtime.events import (
     TranscriptDelta,
     TranscriptCompleted,
     ErrorEvent,
+    ConversationItem,    # Conversation history entry
 )
 ```
 

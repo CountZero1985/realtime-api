@@ -1236,3 +1236,307 @@ class TestRealtimeSessionReconnection:
         success_events = [e for e in events if e.event_type == "websocket.reconnect_success"]
         assert len(success_events) == 1
         assert success_events[0].data["attempt"] == 2
+
+
+# New tests for response interruption and conversation management
+
+
+class TestCancelResponse:
+    """Test cancel_response method."""
+
+    @pytest.mark.asyncio
+    async def test_cancel_response_sends_event(self):
+        """Verify response.cancel event sent."""
+        mock_ws = MockWebSocket(make_handshake_messages())
+        with patch("openai_apis.realtime.session.websockets.connect",
+                   side_effect=mock_websockets_connect(mock_ws)):
+            async with RealtimeSession() as session:
+                await session.cancel_response()
+        sent_event = json.loads(mock_ws.sent_messages[1])
+        assert sent_event["type"] == "response.cancel"
+
+    @pytest.mark.asyncio
+    async def test_cancel_response_not_connected_raises(self):
+        """InvalidStateTransition if not connected."""
+        session = RealtimeSession()
+        with pytest.raises(InvalidStateTransition):
+            await session.cancel_response()
+
+    @pytest.mark.asyncio
+    async def test_cancel_response_audit_log(self):
+        """Audit log records response.cancel_sent."""
+        mock_ws = MockWebSocket(make_handshake_messages())
+        with patch("openai_apis.realtime.session.websockets.connect",
+                   side_effect=mock_websockets_connect(mock_ws)):
+            async with RealtimeSession() as session:
+                await session.cancel_response()
+                events = session.audit_log.events
+        event_types = [e.event_type for e in events]
+        assert "response.cancel_sent" in event_types
+
+
+class TestConversationHistory:
+    """Test conversation history tracking."""
+
+    @pytest.mark.asyncio
+    async def test_empty_history_on_init(self):
+        """History is empty initially."""
+        mock_ws = MockWebSocket(make_handshake_messages())
+        with patch("openai_apis.realtime.session.websockets.connect",
+                   side_effect=mock_websockets_connect(mock_ws)):
+            async with RealtimeSession() as session:
+                assert session.get_conversation_history() == []
+
+    @pytest.mark.asyncio
+    async def test_user_transcript_tracked(self):
+        """User transcription added to history."""
+        messages = make_handshake_messages() + [
+            json.dumps({
+                "type": "conversation.item.input_audio_transcription.completed",
+                "item_id": "item_1",
+                "transcript": "Hello",
+            }),
+        ]
+        mock_ws = MockWebSocket(messages)
+        with patch("openai_apis.realtime.session.websockets.connect",
+                   side_effect=mock_websockets_connect(mock_ws)):
+            async with RealtimeSession() as session:
+                await asyncio.sleep(0.1)
+                history = session.get_conversation_history()
+        assert len(history) == 1
+        assert history[0] == {"role": "user", "content": "Hello"}
+
+    @pytest.mark.asyncio
+    async def test_assistant_transcript_tracked(self):
+        """Assistant transcription added to history."""
+        messages = make_handshake_messages() + [
+            json.dumps({
+                "type": "response.audio_transcript.done",
+                "item_id": "item_2",
+                "transcript": "Hi there!",
+            }),
+        ]
+        mock_ws = MockWebSocket(messages)
+        with patch("openai_apis.realtime.session.websockets.connect",
+                   side_effect=mock_websockets_connect(mock_ws)):
+            async with RealtimeSession() as session:
+                await asyncio.sleep(0.1)
+                history = session.get_conversation_history()
+        assert len(history) == 1
+        assert history[0] == {"role": "assistant", "content": "Hi there!"}
+
+    @pytest.mark.asyncio
+    async def test_multi_turn_conversation(self):
+        """Multiple turns tracked in order."""
+        messages = make_handshake_messages() + [
+            json.dumps({
+                "type": "conversation.item.input_audio_transcription.completed",
+                "item_id": "item_1",
+                "transcript": "Hello",
+            }),
+            json.dumps({
+                "type": "response.audio_transcript.done",
+                "item_id": "item_2",
+                "transcript": "Hi!",
+            }),
+            json.dumps({
+                "type": "conversation.item.input_audio_transcription.completed",
+                "item_id": "item_3",
+                "transcript": "How are you?",
+            }),
+        ]
+        mock_ws = MockWebSocket(messages)
+        with patch("openai_apis.realtime.session.websockets.connect",
+                   side_effect=mock_websockets_connect(mock_ws)):
+            async with RealtimeSession() as session:
+                await asyncio.sleep(0.1)
+                history = session.get_conversation_history()
+        assert len(history) == 3
+        assert history[0]["role"] == "user"
+        assert history[1]["role"] == "assistant"
+        assert history[2]["role"] == "user"
+
+    @pytest.mark.asyncio
+    async def test_clear_conversation(self):
+        """clear_conversation empties history."""
+        messages = make_handshake_messages() + [
+            json.dumps({
+                "type": "conversation.item.input_audio_transcription.completed",
+                "item_id": "item_1",
+                "transcript": "Hello",
+            }),
+        ]
+        mock_ws = MockWebSocket(messages)
+        with patch("openai_apis.realtime.session.websockets.connect",
+                   side_effect=mock_websockets_connect(mock_ws)):
+            async with RealtimeSession() as session:
+                await asyncio.sleep(0.1)
+                assert len(session.get_conversation_history()) == 1
+                await session.clear_conversation()
+                assert session.get_conversation_history() == []
+
+    @pytest.mark.asyncio
+    async def test_clear_conversation_audit(self):
+        """clear_conversation logs conversation.cleared audit event."""
+        messages = make_handshake_messages() + [
+            json.dumps({
+                "type": "conversation.item.input_audio_transcription.completed",
+                "item_id": "item_1",
+                "transcript": "Hello",
+            }),
+        ]
+        mock_ws = MockWebSocket(messages)
+        with patch("openai_apis.realtime.session.websockets.connect",
+                   side_effect=mock_websockets_connect(mock_ws)):
+            async with RealtimeSession() as session:
+                await asyncio.sleep(0.1)
+                await session.clear_conversation()
+                events = session.audit_log.events
+        event_types = [e.event_type for e in events]
+        assert "conversation.cleared" in event_types
+        cleared = [e for e in events if e.event_type == "conversation.cleared"][0]
+        assert cleared.data["items_cleared"] == 1
+
+
+class TestVADInterruption:
+    """Test VAD-based automatic interruption detection."""
+
+    @pytest.mark.asyncio
+    async def test_speech_started_during_response_emits_interrupted(self):
+        """response.interrupted emitted when speech detected during response."""
+        messages = make_handshake_messages() + [
+            json.dumps({
+                "type": "response.created",
+                "response": {"id": "resp_1", "status": "in_progress"},
+            }),
+            json.dumps({"type": "input_audio_buffer.speech_started"}),
+        ]
+        mock_ws = MockWebSocket(messages)
+        callback_data = []
+
+        def callback(data):
+            callback_data.append(data)
+
+        with patch("openai_apis.realtime.session.websockets.connect",
+                   side_effect=mock_websockets_connect(mock_ws)):
+            async with RealtimeSession() as session:
+                session.on("response.interrupted", callback)
+                await asyncio.sleep(0.1)
+
+        assert len(callback_data) == 1
+        assert callback_data[0]["response_id"] == "resp_1"
+        assert callback_data[0]["trigger"] == "vad_speech_started"
+
+    @pytest.mark.asyncio
+    async def test_speech_started_without_response_no_interrupted(self):
+        """No response.interrupted if no response is in progress."""
+        messages = make_handshake_messages() + [
+            json.dumps({"type": "input_audio_buffer.speech_started"}),
+        ]
+        mock_ws = MockWebSocket(messages)
+        callback_data = []
+
+        def callback(data):
+            callback_data.append(data)
+
+        with patch("openai_apis.realtime.session.websockets.connect",
+                   side_effect=mock_websockets_connect(mock_ws)):
+            async with RealtimeSession() as session:
+                session.on("response.interrupted", callback)
+                await asyncio.sleep(0.1)
+
+        assert len(callback_data) == 0
+
+    @pytest.mark.asyncio
+    async def test_interruption_audit_log(self):
+        """Audit log records response.interrupted on VAD speech during response."""
+        messages = make_handshake_messages() + [
+            json.dumps({
+                "type": "response.created",
+                "response": {"id": "resp_1", "status": "in_progress"},
+            }),
+            json.dumps({"type": "input_audio_buffer.speech_started"}),
+        ]
+        mock_ws = MockWebSocket(messages)
+        with patch("openai_apis.realtime.session.websockets.connect",
+                   side_effect=mock_websockets_connect(mock_ws)):
+            async with RealtimeSession() as session:
+                await asyncio.sleep(0.1)
+                events = session.audit_log.events
+        event_types = [e.event_type for e in events]
+        assert "response.interrupted" in event_types
+        interrupted = [e for e in events if e.event_type == "response.interrupted"][0]
+        assert interrupted.data["response_id"] == "resp_1"
+        assert interrupted.data["trigger"] == "vad_speech_started"
+
+
+class TestResponseCreatedTracking:
+    """Test response.created tracking for current_response_id."""
+
+    @pytest.mark.asyncio
+    async def test_response_created_emits_callback(self):
+        """response.created callback fires with response data."""
+        messages = make_handshake_messages() + [
+            json.dumps({
+                "type": "response.created",
+                "response": {"id": "resp_1", "status": "in_progress"},
+            }),
+        ]
+        mock_ws = MockWebSocket(messages)
+        callback_data = []
+
+        def callback(data):
+            callback_data.append(data)
+
+        with patch("openai_apis.realtime.session.websockets.connect",
+                   side_effect=mock_websockets_connect(mock_ws)):
+            async with RealtimeSession() as session:
+                session.on("response.created", callback)
+                await asyncio.sleep(0.1)
+
+        assert len(callback_data) == 1
+        assert callback_data[0]["id"] == "resp_1"
+
+    @pytest.mark.asyncio
+    async def test_response_done_clears_current_response(self):
+        """response.done clears _current_response_id."""
+        messages = make_handshake_messages() + [
+            json.dumps({
+                "type": "response.created",
+                "response": {"id": "resp_1", "status": "in_progress"},
+            }),
+            json.dumps({
+                "type": "response.done",
+                "response": {"id": "resp_1", "status": "completed"},
+            }),
+        ]
+        mock_ws = MockWebSocket(messages)
+        with patch("openai_apis.realtime.session.websockets.connect",
+                   side_effect=mock_websockets_connect(mock_ws)):
+            async with RealtimeSession() as session:
+                await asyncio.sleep(0.1)
+                assert session._current_response_id is None
+
+    @pytest.mark.asyncio
+    async def test_response_done_includes_status(self):
+        """response.done callback includes status field."""
+        messages = make_handshake_messages() + [
+            json.dumps({
+                "type": "response.done",
+                "response": {"id": "resp_1", "status": "cancelled"},
+            }),
+        ]
+        mock_ws = MockWebSocket(messages)
+        callback_data = []
+
+        def callback(data):
+            callback_data.append(data)
+
+        with patch("openai_apis.realtime.session.websockets.connect",
+                   side_effect=mock_websockets_connect(mock_ws)):
+            async with RealtimeSession() as session:
+                session.on("response.done", callback)
+                await asyncio.sleep(0.1)
+
+        assert len(callback_data) == 1
+        assert callback_data[0]["status"] == "cancelled"

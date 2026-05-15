@@ -2,7 +2,7 @@
 from openai_apis.realtime.config import RealtimeConfig
 from openai_apis.realtime.events import (
     TranscriptDelta, TranscriptCompleted, ErrorEvent,
-    AudioDelta, AudioDone,
+    AudioDelta, AudioDone, ConversationItem,
 )
 from openai_apis.realtime.session import RealtimeSession, RealtimeAgentState
 from openai_apis.realtime.tools import ToolRegistry
@@ -21,4 +21,5 @@ __all__ = [
     "ErrorEvent",
     "AudioDelta",
     "AudioDone",
+    "ConversationItem",
 ]

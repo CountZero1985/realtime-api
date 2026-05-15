@@ -60,7 +60,15 @@ from openai_apis.realtime import (
 )
 from openai_apis.realtime.events import (
     TranscriptDelta, TranscriptCompleted, ErrorEvent,
-    AudioDelta, AudioDone,
+    AudioDelta, AudioDone, ConversationItem,
+)
+
+# MCP (M4)
+from openai_apis.mcp import (
+    MCPPlugin,
+    MCPPluginManager,
+    FileSystemPlugin,
+    GmailPlugin,
 )
 
 __all__ = [
@@ -104,4 +112,10 @@ __all__ = [
     "ErrorEvent",
     "AudioDelta",
     "AudioDone",
+    "ConversationItem",
+    # MCP
+    "MCPPlugin",
+    "MCPPluginManager",
+    "FileSystemPlugin",
+    "GmailPlugin",
 ]
