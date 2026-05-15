@@ -596,6 +596,19 @@ class RealtimeSession(BaseSession):
                 "status": status,
             })
 
+        # VAD-based interruption detection
+        elif event_type == "input_audio_buffer.speech_started":
+            if self._current_response_id is not None:
+                self._audit_log.log("response.interrupted", {
+                    "response_id": self._current_response_id,
+                    "trigger": "vad_speech_started",
+                })
+                self._emit("response.interrupted", {
+                    "response_id": self._current_response_id,
+                    "trigger": "vad_speech_started",
+                })
+            self._emit("input_audio_buffer.speech_started", event)
+
         # Errors
         elif event_type == "error":
             error_data = event.get("error", {})
