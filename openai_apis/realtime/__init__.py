@@ -5,6 +5,7 @@ from openai_apis.realtime.events import (
     AudioDelta, AudioDone,
 )
 from openai_apis.realtime.session import RealtimeSession, RealtimeAgentState
+from openai_apis.realtime.tools import ToolRegistry
 
 # Backward compatibility alias
 RealtimeVoiceAPI = RealtimeSession
@@ -14,6 +15,7 @@ __all__ = [
     "RealtimeVoiceAPI",  # backward compat
     "RealtimeAgentState",
     "RealtimeConfig",
+    "ToolRegistry",
     "TranscriptDelta",
     "TranscriptCompleted",
     "ErrorEvent",
