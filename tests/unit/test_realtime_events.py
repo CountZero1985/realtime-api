@@ -4,8 +4,9 @@ import json
 import time
 from unittest.mock import Mock, patch, MagicMock
 from openai_apis.realtime.events import TranscriptDelta, TranscriptCompleted, ErrorEvent
-from openai_apis.realtime.session import RealtimeVoiceAPI
-from openai_apis.realtime.config import RealtimeConfig
+from openai_apis.realtime import RealtimeSession, RealtimeConfig
+# Backward compat alias for tests
+RealtimeVoiceAPI = RealtimeSession
 
 
 @pytest.fixture
