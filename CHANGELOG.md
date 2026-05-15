@@ -9,6 +9,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **RealtimeConfig modernization** - Updated `RealtimeConfig` to match OpenAI Realtime API specifications (issue #26):
+  - **Default model change**: Changed default `model` from `"gpt-4o-mini-realtime-preview-2024-12-17"` to `"gpt-realtime-mini"`
+  - **Default voice change**: Changed default `voice` from `"sage"` to `"ash"`
+  - **New fields**: Added `vad` (VADConfig), `input_audio_transcription` (bool), and `tools` (list[dict])
+  - **Removed fields**: Removed `speed`, `transcription_model`, `sample_rate`, `chunk_duration_s`, and `channels` (audio format now handled by `BaseConfig.audio_format`)
+  - **Field validation**: Added `__post_init__` validation for model, voice, temperature (0.6-1.2), max_response_output_tokens, and modalities
+  - **Supported models**: gpt-realtime-mini, gpt-4o-mini-realtime-preview-2024-12-17, gpt-4o-realtime-preview, gpt-4o-realtime-preview-2024-12-17
+  - **Supported voices**: alloy, ash, ballad, coral, echo, sage, shimmer, verse
+  - **New method**: Added `to_session_update()` method that converts config to OpenAI Realtime API `session.update` event format
+  - **VAD integration**: Voice Activity Detection now configurable via `VADConfig` field with support for server_vad, semantic_vad, and disabled modes
+  - **Tools support**: Function calling tools can now be provided via `tools` field (JSON Schema format)
+  - **Session update delegation**: `RealtimeSession._create_session_update_payload()` now delegates to `config.to_session_update()`
+  - **Breaking change**: Old fields (`speed`, `transcription_model`, `sample_rate`, `chunk_duration_s`, `channels`, `keywords`) removed - users must migrate to new field structure
+  - Comprehensive unit tests in `tests/unit/test_realtime_config.py` with 100% coverage
+
 - **RealtimeSession async WebSocket rewrite** - Replaced synchronous `RealtimeVoiceAPI` with async `RealtimeSession` inheriting from `BaseSession` (issue #25):
   - **Architecture change**: New `RealtimeSession` class uses async `websockets` library instead of synchronous `websocket-client` + threading
   - **BaseSession integration**: Full lifecycle management with state machine (CREATED → CONNECTING → CONNECTED → DISCONNECTING → CLOSED)
