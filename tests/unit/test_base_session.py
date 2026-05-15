@@ -3,7 +3,9 @@ import pytest
 import uuid
 import json
 from unittest.mock import patch, MagicMock, call
-from openai_apis import BaseSession, SessionState, InvalidStateTransition, BaseConfig, SessionAuditLog
+from openai_apis import BaseSession, SessionState, SessionAuditLog
+from openai_apis._session import InvalidStateTransition
+from openai_apis._config import BaseConfig
 
 
 class ConcreteSession(BaseSession):

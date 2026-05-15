@@ -59,7 +59,8 @@ examples/               # Standalone example applications
 ## Core Components
 
 ### Transcription API (`openai_apis/transcription/`)
-- **`TranscriptionAPI`**: Stateless speech-to-text using OpenAI Whisper
+- **`TranscriptionSession`**: WebSocket-based realtime transcription (recommended, in public API)
+- **`TranscriptionAPI`**: Stateless speech-to-text using OpenAI Whisper (legacy, submodule only)
 - **`TranscriptionConfig`**: Configuration for transcription with validation
   - Model: gpt-realtime-whisper (default), gpt-4o-mini-transcribe, gpt-4o-transcribe, whisper-1
   - Language: ISO 639-1 language codes (100+ supported) or None for auto-detect
@@ -77,13 +78,14 @@ examples/               # Standalone example applications
   - `create(config)`: Factory method to instantiate provider from config
   - `list_providers()`: List all registered provider names
   - Built-in providers: "openai" (OpenAITTSProvider), "elevenlabs" (ElevenLabsTTSProvider stub)
-- **`OpenAITTSProvider`**: OpenAI text-to-speech provider (also aliased as `TTSAPI`)
+- **`TTSProvider`**: Public alias for `BaseTTSProvider` abstract base class (in public API)
+- **`OpenAITTSProvider`**: OpenAI text-to-speech provider (also aliased as `TTSAPI`, submodule only)
   - 13 voices: alloy, ash, ballad, coral, echo, fable, nova, onyx, sage, shimmer, verse, marin, cedar
   - Full implementation with streaming and batch synthesis
-- **`ElevenLabsTTSProvider`**: ElevenLabs TTS provider (stub implementation)
+- **`ElevenLabsTTSProvider`**: ElevenLabs TTS provider (stub implementation, submodule only)
   - 3 voices: rachel, adam, bella
   - All methods raise `NotImplementedError` (placeholder for future integration)
-- **`BaseTTSProvider`**: Abstract base class for TTS providers
+- **`BaseTTSProvider`**: Abstract base class for TTS providers (submodule only, use `TTSProvider` from public API)
 - **`TTSConfig`**: Configuration for TTS with `__post_init__` validation
   - Fields: `provider`, `model`, `voice`, `speed`, `instructions`, `output_format`, `language`, `sample_rate`
   - Validates `speed` (0.25-4.0), `voice` (against provider's supported voices), `output_format` (pcm/mp3/opus/aac/flac/wav), `provider` (must be registered)
@@ -91,8 +93,9 @@ examples/               # Standalone example applications
 - Provider-based architecture with class-based registry for extensibility
 
 ### Realtime Voice API (`openai_apis/realtime/`)
-- **`RealtimeVoiceAPI`**: Direct WebSocket connection to OpenAI Realtime API
-- **`RealtimeAgentState`**: State manager for realtime sessions
+- **`RealtimeSession`**: Direct WebSocket connection to OpenAI Realtime API (in public API)
+- **`RealtimeVoiceAPI`**: Backward-compatible alias for `RealtimeSession` (submodule only)
+- **`RealtimeAgentState`**: State manager for realtime sessions (internal, submodule only)
 - **`RealtimeConfig`**: Session configuration (model, voice, modalities, language, keywords)
   - `language` field for setting transcription language (default: "hu")
   - `keywords` field for domain-specific transcription steering (comma-separated prompt)
@@ -217,31 +220,38 @@ python examples/realtime_websocket.py
 
 **Library imports (openai_apis package):**
 ```python
-# From package root - recommended
-from openai_apis import TranscriptionAPI, TranscriptionConfig
-from openai_apis import TTSAPI, TTSConfig, TTSRegistry, OpenAITTSProvider, ElevenLabsTTSProvider
-from openai_apis import RealtimeVoiceAPI, RealtimeConfig, RealtimeAgentState
-
-# From submodules - also valid
-from openai_apis.transcription import TranscriptionAPI, TranscriptionConfig
-from openai_apis.tts import (
-    TTSAPI, TTSConfig, TTSRegistry,
-    OpenAITTSProvider, ElevenLabsTTSProvider, BaseTTSProvider,
-    register_provider, get_provider
-)
-from openai_apis.realtime import RealtimeVoiceAPI, RealtimeConfig, RealtimeAgentState
-
-# Session infrastructure
-from openai_apis import BaseSession, SessionState, InvalidStateTransition, BaseConfig
-
-# Configuration classes
+# From package root - recommended (public API)
+from openai_apis import TranscriptionSession, TranscriptionConfig
+from openai_apis import RealtimeSession, RealtimeConfig
+from openai_apis import TTSProvider, TTSConfig, TTSRegistry
 from openai_apis import AudioFormat, VADConfig
+from openai_apis import ToolRegistry
+from openai_apis import MCPPlugin, MCPPluginManager
+from openai_apis import BaseSession, SessionState, SessionAuditLog
 
-# Logging infrastructure
-from openai_apis import get_logger, log_audit_event, log_performance, set_correlation_id
+# From submodules - for advanced usage
+from openai_apis.transcription import TranscriptionAPI  # Stateless API
+from openai_apis.tts import (
+    OpenAITTSProvider,  # Direct provider access
+    TTSAPI,  # Alias for OpenAITTSProvider
+    ElevenLabsTTSProvider,
+    BaseTTSProvider,
+    register_provider,
+    get_provider
+)
+from openai_apis.realtime import RealtimeVoiceAPI  # Alias for RealtimeSession
+from openai_apis.realtime.events import (
+    AudioDelta,
+    AudioDone,
+    TranscriptDelta,
+    TranscriptCompleted,
+    ErrorEvent
+)
 
-# Per-session audit logging
-from openai_apis import SessionAuditLog, AuditEvent
+# Internal utilities (not in public API)
+from openai_apis._session import InvalidStateTransition
+from openai_apis._config import BaseConfig
+from openai_apis._logging import AuditEvent, get_logger, log_audit_event, log_performance, set_correlation_id
 ```
 
 **Example imports (examples/ directory):**
@@ -272,10 +282,12 @@ from examples.utils.time_format import magyar_ido_szoveggel
 All API modules follow a consistent configuration pattern:
 
 ```python
-from openai_apis import TranscriptionAPI, TranscriptionConfig, AudioFormat
+from openai_apis import TranscriptionSession, TranscriptionConfig, AudioFormat
 
 # Use defaults (24kHz, mono, int16, pcm16 audio)
-api = TranscriptionAPI()
+async with TranscriptionSession() as session:
+    # Use session...
+    pass
 
 # Or customize
 config = TranscriptionConfig(
@@ -284,12 +296,23 @@ config = TranscriptionConfig(
     api_key="sk-...",  # Optional, reads from OPENAI_API_KEY env var
     timeout=60.0
 )
-api = TranscriptionAPI(config=config)
+async with TranscriptionSession(config=config) as session:
+    # Use session...
+    pass
 
 # Custom audio format (inherited by all configs)
 custom_format = AudioFormat(sample_rate=48000, channels=2, dtype="float32")
 config = TranscriptionConfig(audio_format=custom_format)
-api = TranscriptionAPI(config=config)
+async with TranscriptionSession(config=config) as session:
+    # Use session...
+    pass
+
+# For TTS via registry
+from openai_apis import TTSRegistry, TTSConfig
+
+config = TTSConfig(voice="sage", speed=1.0)
+tts = TTSRegistry.create(config)
+audio = await tts.synthesize("Hello!")
 ```
 
 **AudioFormat usage:**

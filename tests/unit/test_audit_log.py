@@ -5,7 +5,8 @@ import threading
 from datetime import datetime
 from pathlib import Path
 import pytest
-from openai_apis import SessionAuditLog, AuditEvent
+from openai_apis import SessionAuditLog
+from openai_apis._logging import AuditEvent
 
 
 class TestAuditEvent:

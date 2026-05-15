@@ -2,7 +2,8 @@
 import os
 import pytest
 from dataclasses import FrozenInstanceError, dataclass
-from openai_apis import AudioFormat, VADConfig, BaseConfig
+from openai_apis import AudioFormat, VADConfig
+from openai_apis._config import BaseConfig
 
 
 class TestAudioFormat:

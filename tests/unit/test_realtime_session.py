@@ -23,7 +23,8 @@ from openai_apis.realtime import (
     AudioDelta,
     AudioDone,
 )
-from openai_apis import SessionState, InvalidStateTransition
+from openai_apis import SessionState
+from openai_apis._session import InvalidStateTransition
 from openai_apis.realtime.tools import ToolRegistry
 
 
