@@ -54,6 +54,24 @@ config = RealtimeConfig(
 )
 
 async def main():
+    """
+    Main function for push-to-talk voice agent demonstration.
+
+    This example demonstrates:
+    - RealtimeSession with VAD disabled (push-to-talk mode)
+    - ToolRegistry-based tool registration and execution
+    - Event-driven audio streaming with delta accumulation
+    - Manual audio recording via record_audio() utility
+    - Chunked audio streaming to WebSocket (4800 samples/0.2s)
+    - Conversation history tracking and viewing
+    - Per-session audit log export on exit
+
+    Interactive commands:
+    - <Enter>: Start audio recording, speak request, press Enter to stop
+    - h: Display conversation history
+    - q: Quit and export audit log
+    - Ctrl+C: Graceful exit with audit log export
+    """
     print("Voice Agent - Push-to-Talk (RealtimeSession)")
     print("Eszközök: get_current_time, get_weather\n")
 

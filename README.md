@@ -83,11 +83,11 @@ python examples/cli_agent.py
 ```
 Interactive text-based conversation with the AI assistant in Hungarian.
 
-**Voice-based Agent:**
+**Voice-based Agent (Push-to-Talk):**
 ```bash
 python examples/voice_agent.py
 ```
-Voice input → transcription → agent → TTS → audio output pipeline.
+Interactive push-to-talk voice agent using RealtimeSession with tool calling support (get_current_time, get_weather). Press Enter to record audio, say your request, and hear the AI assistant respond. Includes conversation history viewing and audit log export.
 
 **Realtime WebSocket API:**
 ```bash
@@ -530,12 +530,12 @@ examples/
 │   ├── tools.py            # Agent tools (websearch, time, display)
 │   └── team.py             # Agent team setup
 ├── utils/                   # Utility modules
-│   ├── audio_io.py         # Audio recording and playback
+│   ├── audio_io.py         # Audio recording and playback (24kHz)
 │   └── time_format.py      # Hungarian time formatting
 ├── cli_app.py              # CLI interface module
 ├── voice_pipeline.py       # Voice pipeline framework
 ├── cli_agent.py            # Example: text-based agent
-├── voice_agent.py          # Example: voice-based agent
+├── voice_agent.py          # Example: push-to-talk voice with RealtimeSession
 └── realtime_websocket.py   # Example: realtime WebSocket API
 ```
 

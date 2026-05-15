@@ -118,7 +118,7 @@ examples/                   # Standalone example applications
 │                           # - VoiceConfig (voice pipeline configuration)
 │
 ├── cli_agent.py            # Example: text-based agent
-├── voice_agent.py          # Example: voice-based agent
+├── voice_agent.py          # Example: push-to-talk voice with RealtimeSession
 └── realtime_websocket.py   # Example: realtime WebSocket API
 ```
 
@@ -198,11 +198,11 @@ The system follows a layered architecture with clear separation between user int
 
 | Layer | Responsibility | Components |
 |-------|---------------|------------|
-| **User Interface** | User interaction modes | CLI, Voice, Realtime WebSocket scripts |
-| **Application** | Business logic and workflow | VoicePipeline, StreamingVoiceWorkflow, CLI |
-| **Agent** | AI reasoning and tool use | assisstant_agent, tools_agent, tools |
+| **User Interface** | User interaction modes | CLI, Push-to-talk voice, Realtime WebSocket scripts |
+| **Application** | Business logic and workflow | RealtimeSession, ToolRegistry, CLI |
+| **Agent** | AI reasoning and tool use | Tool handlers (get_current_time, get_weather), assisstant_agent, tools_agent |
 | **Audio I/O** | Audio recording and playback | record_audio(), AudioPlayer |
-| **OpenAI API** | External API integration | TranscriptionAPI, TranscriptionSession, TTSAPI, RealtimeVoiceAPI |
+| **OpenAI API** | External API integration | TranscriptionAPI, TranscriptionSession, TTSRegistry, RealtimeSession |
 
 ---
 
@@ -380,32 +380,34 @@ async with RealtimeSession(config=config) as session:
 
 ## Data Flow
 
-### Voice Pipeline Mode
+### Voice Agent Mode (Push-to-Talk with RealtimeSession)
 
-Voice Pipeline mode uses the OpenAI Agents SDK `VoicePipeline` with a custom `StreamingVoiceWorkflow` adapter:
+Voice Agent mode (`examples/voice_agent.py`) demonstrates push-to-talk interaction using RealtimeSession with ToolRegistry-based tool calling:
 
 ```
-User Speaks
+User presses Enter
     ↓
-record_audio() [Enter to start/stop]
+record_audio() [blocking call, Enter to start/stop]
     ↓
 AudioInput buffer (numpy array, 24kHz mono PCM16)
     ↓
-VoicePipeline → STT (gpt-4o-mini-transcribe, language: hu)
+Flatten and chunk audio (4800 samples/0.2s chunks)
     ↓
-Transcription text (Hungarian)
+RealtimeSession.send_audio(chunk.tobytes()) [for each chunk]
     ↓
-StreamingVoiceWorkflow.run(transcription)
+RealtimeSession.commit_audio() [trigger transcription]
     ↓
-Runner.run_streamed(assisstant_agent, input_history)
+RealtimeSession.create_response() [generate response]
     ↓
-Agent processing (may delegate to tools_agent)
+[Server-side processing: STT → Tool calls → TTS]
     ↓
-VoiceWorkflowHelper.stream_text_from(result)
+Event callbacks:
+  - transcript.input → print user transcription
+  - transcript.output → print AI transcription
+  - audio.delta → accumulate audio bytes in buffer
+  - audio.done → signal playback ready
     ↓
-Text chunks → VoicePipeline TTS (gpt-4o-mini-tts, voice: ash, speed: 4.0)
-    ↓
-Audio chunks
+Convert buffer to numpy array
     ↓
 AudioPlayer.add_audio() → sounddevice.OutputStream
     ↓
@@ -415,16 +417,28 @@ User hears response
 **Key Components:**
 
 - **`record_audio()`**: Blocking, Enter-based recording (24kHz, mono, PCM16)
-- **`VoicePipeline`**: Orchestrates STT → Workflow → TTS
-- **`StreamingVoiceWorkflow`**: Custom adapter maintaining conversation history and agent state
+- **`RealtimeSession`**: WebSocket connection to OpenAI Realtime API with VAD disabled
+- **`ToolRegistry`**: Registers `get_current_time` and `get_weather` tools with JSON Schema
+- **Event-driven callbacks**: Accumulates audio deltas in bytearray buffer
 - **`AudioPlayer`**: Queue-based audio playback with low latency
+- **Audit logging**: All events logged to per-session audit trail, exported on exit
+
+**Tool Execution Flow:**
+
+When the model calls a tool (e.g., "Hány óra van?"):
+1. `tool.call` event received with tool name and arguments
+2. `RealtimeSession._execute_tool()` invokes registered handler
+3. Tool result sent back via WebSocket (`conversation.item.create`)
+4. `create_response()` called automatically to continue conversation
+5. Model incorporates tool result into spoken response
 
 **Data Format:**
 
 ```python
-input_history = [
-    {"role": "user", "content": "Transcription text"},
-    {"role": "assistant", "content": "Agent response"}
+# Conversation history via session.get_conversation_history()
+[
+    {"role": "user", "content": "Hány óra van?"},
+    {"role": "assistant", "content": "Jelenleg délelőtt 10 óra 30 perc van."}
 ]
 ```
 
@@ -928,7 +942,7 @@ examples/
 ├── cli_app.py             # CLI interface module
 ├── voice_pipeline.py      # Voice pipeline framework
 ├── cli_agent.py           # Example: text agent
-├── voice_agent.py         # Example: voice agent
+├── voice_agent.py         # Example: push-to-talk voice agent
 └── realtime_websocket.py  # Example: realtime API
 ```
 
@@ -937,7 +951,7 @@ examples/
 | Script | Purpose | Uses |
 |--------|---------|------|
 | `cli_agent.py` | Text-based agent | `CLI`, `assisstant_agent` |
-| `voice_agent.py` | Voice-based agent | `AgentFrameworkAPI`, `VoicePipeline` |
+| `voice_agent.py` | Push-to-talk voice agent with tool calling | `RealtimeSession`, `ToolRegistry`, `record_audio`, `AudioPlayer` |
 | `realtime_websocket.py` | Realtime WebSocket | `RealtimeVoiceAPI` |
 
 ### Running Examples
