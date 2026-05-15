@@ -256,6 +256,60 @@ async def main():
 asyncio.run(main())
 ```
 
+**Tool/Function Calling with ToolRegistry:**
+
+```python
+from openai_apis import RealtimeSession, RealtimeConfig, ToolRegistry
+
+# Create and register tools
+tools = ToolRegistry()
+
+# Register a tool with JSON Schema parameters
+tools.register(
+    name="get_weather",
+    description="Get current weather for a city",
+    parameters={
+        "type": "object",
+        "properties": {
+            "city": {"type": "string", "description": "City name"}
+        },
+        "required": ["city"]
+    },
+    handler=lambda city: {"city": city, "temp": 22, "conditions": "sunny"}
+)
+
+# Register async handler
+async def search_web(query: str) -> dict:
+    # Perform web search
+    return {"query": query, "results": [...]}
+
+tools.register(
+    name="web_search",
+    description="Search the web for information",
+    parameters={
+        "type": "object",
+        "properties": {
+            "query": {"type": "string", "description": "Search query"}
+        },
+        "required": ["query"]
+    },
+    handler=search_web
+)
+
+# Configure session with tools
+config = RealtimeConfig(tools=tools)
+
+async with RealtimeSession(config) as session:
+    # Tool calls are automatically executed when model requests them
+    # Results are sent back and model continues conversation
+
+    # Access audit log to see tool executions
+    events = session.audit_log.events
+    tool_events = [e for e in events if e.event_type.startswith("tool.")]
+    for event in tool_events:
+        print(f"{event.event_type}: {event.data}")
+```
+
 **Streaming transcript events with delta callbacks:**
 
 ```python
