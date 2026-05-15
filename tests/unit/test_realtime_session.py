@@ -881,3 +881,85 @@ class TestRealtimeSessionAuditLog:
         # After reset, total_chunks should be 1 again
         assert chunk_events[1].data["total_chunks"] == 1
         assert chunk_events[1].data["total_bytes"] == 200
+
+
+class TestRealtimeSessionToolExecutionFailure:
+    """Test _execute_tool error handling path (lines 341-352)."""
+
+    @pytest.mark.asyncio
+    async def test_execute_tool_failure_sends_error_result(self):
+        """When tool handler raises, error JSON sent to model + response.create triggered."""
+        from openai_apis.realtime import RealtimeSession, RealtimeConfig
+        from openai_apis.realtime.tools import ToolRegistry
+
+        registry = ToolRegistry()
+        def failing_tool(city: str) -> dict:
+            raise RuntimeError("Tool crashed")
+        registry.register("broken", "A broken tool",
+                         {"type": "object", "properties": {"city": {"type": "string"}}},
+                         failing_tool)
+
+        messages = [
+            json.dumps({"type": "session.created", "session": {"id": "s1"}}),
+            json.dumps({"type": "session.updated", "session": {"id": "s1"}}),
+            json.dumps({
+                "type": "response.function_call_arguments.done",
+                "call_id": "call_fail",
+                "name": "broken",
+                "arguments": '{"city": "Budapest"}',
+            }),
+        ]
+        mock_ws = MockWebSocket(messages)
+
+        config = RealtimeConfig(tools=registry)
+        with patch("openai_apis.realtime.session.websockets.connect",
+                   side_effect=mock_websockets_connect(mock_ws)):
+            async with RealtimeSession(config=config) as session:
+                await asyncio.sleep(0.2)
+
+        # Verify error result was sent
+        sent_types = [json.loads(m)["type"] for m in mock_ws.sent_messages]
+        assert "conversation.item.create" in sent_types
+        assert "response.create" in sent_types
+
+        tool_result_msg = next(
+            json.loads(m) for m in mock_ws.sent_messages
+            if json.loads(m)["type"] == "conversation.item.create"
+        )
+        output = json.loads(tool_result_msg["item"]["output"])
+        assert "error" in output
+        assert "Tool crashed" in output["error"]
+
+    @pytest.mark.asyncio
+    async def test_execute_tool_failure_audit_logged(self):
+        """Audit log records tool.execution.failed on handler error."""
+        from openai_apis.realtime import RealtimeSession, RealtimeConfig
+        from openai_apis.realtime.tools import ToolRegistry
+
+        registry = ToolRegistry()
+        def failing_tool() -> dict:
+            raise ValueError("bad input")
+        registry.register("fail_tool", "desc", {}, failing_tool)
+
+        messages = [
+            json.dumps({"type": "session.created", "session": {"id": "s1"}}),
+            json.dumps({"type": "session.updated", "session": {"id": "s1"}}),
+            json.dumps({
+                "type": "response.function_call_arguments.done",
+                "call_id": "call_2",
+                "name": "fail_tool",
+                "arguments": "{}",
+            }),
+        ]
+        mock_ws = MockWebSocket(messages)
+
+        config = RealtimeConfig(tools=registry)
+        with patch("openai_apis.realtime.session.websockets.connect",
+                   side_effect=mock_websockets_connect(mock_ws)):
+            async with RealtimeSession(config=config) as session:
+                await asyncio.sleep(0.2)
+                events = session.audit_log.events
+
+        event_types = [e.event_type for e in events]
+        assert "tool.execution.started" in event_types
+        assert "tool.execution.failed" in event_types
