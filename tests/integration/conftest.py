@@ -64,6 +64,22 @@ def sample_audio():
     return np.zeros(24000, dtype=np.int16)
 
 
+class ErrorMockWebSocket(MockWebSocket):
+    """MockWebSocket that raises ConnectionClosed after consuming messages."""
+
+    def __init__(self, messages=None):
+        super().__init__(messages)
+        self.should_raise = False
+
+    async def __anext__(self):
+        if self.should_raise or self.message_index >= len(self.messages):
+            import websockets
+            raise websockets.ConnectionClosed(None, None)
+        msg = self.messages[self.message_index]
+        self.message_index += 1
+        return msg
+
+
 @pytest.fixture
 def temp_audit_dir():
     """Create a temporary directory for audit log export."""
