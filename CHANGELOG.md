@@ -9,6 +9,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **End-to-End Integration Tests** - Comprehensive E2E test suite exercising complete API workflows (issue #38):
+  - **New `tests/integration/test_e2e_flows.py`**: 7 test classes with 20+ tests covering all core APIs (~1200 lines)
+  - **New `tests/integration/conftest.py`**: Shared fixtures including `MockWebSocket`, `ErrorMockWebSocket`, handshake helpers, sample audio, and temp directory fixtures
+  - **TestTranscriptionFlow**: Full transcription workflow (session → audio → deltas → completed → close) and state transition validation
+  - **TestRealtimeVoiceFlow**: Realtime voice flow with audio streaming, typed events (`AudioDelta`, `TranscriptCompleted`), and conversation history tracking
+  - **TestTTSFlow**: TTS provider lifecycle (creation → synthesis → output), file synthesis, registry factory pattern, and empty text validation
+  - **TestToolCallingFlow**: Complete tool execution flow with `ToolRegistry`, sync/async handlers, auto-execution, and result forwarding
+  - **TestAuditLogFlow**: Audit trail completeness, JSON/file export, duration measurement with context manager, and audio duration tracking
+  - **TestConfigFlow**: Configuration propagation to `session.update` WebSocket messages (VAD modes, tools, audio format consistency)
+  - **TestErrorRecovery**: Connection drop handling, reconnection with exponential backoff, error event emission, and `InvalidStateTransition` validation
+  - **Coverage targets**: Session lifecycle state machine, event callbacks, audit logging, tool calling, configuration, and error recovery
+  - **Mock patterns**: Reusable `MockWebSocket` with message queue, `ErrorMockWebSocket` for connection failures, handshake message helpers
+  - All tests use `@pytest.mark.asyncio` with proper async/await patterns and mock WebSocket backends
+  - Tests validate both callback data AND sent WebSocket messages for bidirectional correctness
+  - Run with: `pytest tests/integration/test_e2e_flows.py -v` or `pytest tests/integration/ -v`
+
 - **FastAPI Web Server Example** - Production-ready web server with REST and WebSocket endpoints (issue #36):
   - **New `examples/web_server/` package**: Complete FastAPI application with application factory pattern
   - **REST endpoint**: `POST /api/tts` for text-to-speech synthesis with base64 JSON or raw PCM binary response
