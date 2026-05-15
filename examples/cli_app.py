@@ -362,6 +362,7 @@ async def run_transcription_mode(language: str) -> None:
         print(f"\n[Transzkripció] {data['transcript']}")
         transcript_done.set()
 
+    session = None
     try:
         async with TranscriptionSession(config=config) as session:
             session.on("transcript.delta", on_transcript_delta)
@@ -382,10 +383,10 @@ async def run_transcription_mode(language: str) -> None:
                     chunk_size = 4800  # 100ms at 24kHz mono int16
                     for i in range(0, len(audio_bytes), chunk_size):
                         chunk = audio_bytes[i:i + chunk_size]
-                        session.send_audio(chunk)
+                        await session.send_audio(chunk)
 
                     # Commit and wait for result
-                    session.commit_audio()
+                    await session.commit_audio()
                     await asyncio.wait_for(transcript_done.wait(), timeout=10.0)
                     transcript_done.clear()
 
@@ -398,7 +399,8 @@ async def run_transcription_mode(language: str) -> None:
     except KeyboardInterrupt:
         print("\nKilépés...")
     finally:
-        export_audit_log(session.audit_log, "transcription")
+        if session is not None:
+            export_audit_log(session.audit_log, "transcription")
 
 
 async def run_voice_mode(language: str, voice: str) -> None:
@@ -432,6 +434,7 @@ async def run_voice_mode(language: str, voice: str) -> None:
     def on_error(data: dict) -> None:
         print(f"\n[Hiba] {data.get('error', {}).get('message', 'Unknown error')}")
 
+    session = None
     try:
         async with RealtimeSession(config=config) as session:
             session.on("audio.delta", on_audio_delta)
@@ -458,11 +461,11 @@ async def run_voice_mode(language: str, voice: str) -> None:
                         chunk_size = 4800  # 100ms at 24kHz mono int16
                         for i in range(0, len(audio_bytes), chunk_size):
                             chunk = audio_bytes[i:i + chunk_size]
-                            session.send_audio(chunk)
+                            await session.send_audio(chunk)
 
                         # Commit audio and request response
-                        session.commit_audio()
-                        session.create_response()
+                        await session.commit_audio()
+                        await session.create_response()
 
                         # Wait for AI response
                         await asyncio.wait_for(response_done.wait(), timeout=30.0)
@@ -477,7 +480,8 @@ async def run_voice_mode(language: str, voice: str) -> None:
     except KeyboardInterrupt:
         print("\nKilépés...")
     finally:
-        export_audit_log(session.audit_log, "voice")
+        if session is not None:
+            export_audit_log(session.audit_log, "voice")
 
 
 async def run_tts_mode(language: str, voice: str) -> None:
