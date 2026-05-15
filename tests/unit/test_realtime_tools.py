@@ -261,14 +261,15 @@ class TestToolRegistrySessionIntegration:
                 await asyncio.sleep(0.2)  # Let receive loop + tool execution process
 
         # Verify: conversation.item.create (tool result) + response.create were sent
-        sent_types = [json.loads(m)["type"] for m in mock_ws.sent]
+        parsed_messages = [json.loads(m) for m in mock_ws.sent]
+        sent_types = [m["type"] for m in parsed_messages]
         assert "conversation.item.create" in sent_types
         assert "response.create" in sent_types
 
         # Verify tool result content
         tool_result_msg = next(
-            json.loads(m) for m in mock_ws.sent
-            if json.loads(m)["type"] == "conversation.item.create"
+            m for m in parsed_messages
+            if m["type"] == "conversation.item.create"
         )
         assert tool_result_msg["item"]["call_id"] == "call_1"
         output = json.loads(tool_result_msg["item"]["output"])
