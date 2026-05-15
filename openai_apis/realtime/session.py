@@ -337,6 +337,30 @@ class RealtimeSession(BaseSession):
         await self._send_event(event)
         self._audit_log.log("tool.result_sent", {"call_id": call_id})
 
+    def get_conversation_history(self) -> list[dict[str, str]]:
+        """Get conversation history as a list of role/content dicts.
+
+        Returns:
+            List of dicts with "role" and "content" keys, e.g.:
+            [{"role": "user", "content": "Hello"}, {"role": "assistant", "content": "Hi!"}]
+        """
+        return [
+            {"role": item.role, "content": item.content}
+            for item in self._conversation_history
+        ]
+
+    async def clear_conversation(self) -> None:
+        """Clear the in-memory conversation history.
+
+        Resets the tracked conversation items list to empty.
+
+        Audit Logging:
+            Logs 'conversation.cleared' event with item count before clearing.
+        """
+        count = len(self._conversation_history)
+        self._conversation_history.clear()
+        self._audit_log.log("conversation.cleared", {"items_cleared": count})
+
     async def _execute_tool(self, call_id: str, name: str, arguments: str) -> None:
         """Execute a tool from the registry, send result, and trigger response.
 
