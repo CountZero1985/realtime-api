@@ -468,10 +468,10 @@ class TestStateManagement:
 
             # Simulate multiple messages
             for i in range(3):
-                current = api.state.get("counter")
-                api.state.set("counter", current + 1)
+                current = api.agent_state.get("counter")
+                api.agent_state.set("counter", current + 1)
 
-            assert api.state.get("counter") == 3
+            assert api.agent_state.get("counter") == 3
 
     @pytest.mark.skip(reason="AgentFramework module removed in issue #4")
     @pytest.mark.asyncio

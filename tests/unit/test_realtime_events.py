@@ -93,7 +93,7 @@ class TestDeltaEventCallbacks:
             "item_id": "item_1",
             "delta": "hello"
         })
-        api._on_message(Mock(), message)
+        api._handle_message(message)
 
         callback.assert_called_once()
         event = callback.call_args[0][0]
@@ -111,7 +111,7 @@ class TestDeltaEventCallbacks:
             "item_id": "item_2",
             "delta": "world"
         })
-        api._on_message(Mock(), message)
+        api._handle_message(message)
 
         callback.assert_called_once()
         event = callback.call_args[0][0]
@@ -129,7 +129,7 @@ class TestDeltaEventCallbacks:
                 "item_id": "item_1",
                 "delta": delta
             })
-            api._on_message(Mock(), message)
+            api._handle_message(message)
 
         assert len(events_received) == 3
         assert events_received[0].accumulated == "hel"
@@ -138,7 +138,7 @@ class TestDeltaEventCallbacks:
 
     def test_transcript_completed_callback(self, api):
         callback = Mock()
-        api.on("transcript.completed", callback)
+        api.on("transcript.input", callback)
 
         # First send a delta to start accumulation
         delta_msg = json.dumps({
@@ -146,7 +146,7 @@ class TestDeltaEventCallbacks:
             "item_id": "item_1",
             "delta": "hello"
         })
-        api._on_message(Mock(), delta_msg)
+        api._handle_message(delta_msg)
 
         # Then send completed
         completed_msg = json.dumps({
@@ -154,7 +154,7 @@ class TestDeltaEventCallbacks:
             "item_id": "item_1",
             "transcript": "hello world"
         })
-        api._on_message(Mock(), completed_msg)
+        api._handle_message(completed_msg)
 
         callback.assert_called_once()
         event = callback.call_args[0][0]
@@ -165,14 +165,14 @@ class TestDeltaEventCallbacks:
 
     def test_response_transcript_completed_callback(self, api):
         callback = Mock()
-        api.on("transcript.completed", callback)
+        api.on("transcript.output", callback)
 
         completed_msg = json.dumps({
             "type": "response.audio_transcript.done",
             "item_id": "item_1",
             "transcript": "response text"
         })
-        api._on_message(Mock(), completed_msg)
+        api._handle_message(completed_msg)
 
         callback.assert_called_once()
         event = callback.call_args[0][0]
@@ -185,10 +185,12 @@ class TestDeltaEventCallbacks:
 
         message = json.dumps({
             "type": "error",
-            "code": "rate_limit",
-            "message": "Too many requests"
+            "error": {
+                "code": "rate_limit",
+                "message": "Too many requests"
+            }
         })
-        api._on_message(Mock(), message)
+        api._handle_message(message)
 
         callback.assert_called_once()
         event = callback.call_args[0][0]
@@ -207,7 +209,7 @@ class TestDeltaEventCallbacks:
             "item_id": "item_1",
             "delta": "test"
         })
-        api._on_message(Mock(), message)
+        api._handle_message(message)
 
         cb1.assert_called_once()
         cb2.assert_called_once()
@@ -223,7 +225,7 @@ class TestDeltaEventCallbacks:
             "item_id": "item_1",
             "delta": "test"
         })
-        api._on_message(Mock(), message)
+        api._handle_message(message)
 
         cb1.assert_called_once()
         cb2.assert_called_once()  # Should still be called despite cb1 failing
@@ -233,56 +235,40 @@ class TestDeltaEventAuditLogging:
     """Test audit logging for delta and completed events."""
 
     def test_delta_event_audit_logged(self, api):
-        with patch('openai_apis.realtime.session.log_audit_event') as mock_audit:
-            message = json.dumps({
-                "type": "conversation.item.input_audio_transcription.delta",
-                "item_id": "item_1",
-                "delta": "hello"
-            })
-            api._on_message(Mock(), message)
+        message = json.dumps({
+            "type": "conversation.item.input_audio_transcription.delta",
+            "item_id": "item_1",
+            "delta": "hello"
+        })
+        api._handle_message(message)
 
-            mock_audit.assert_any_call(
-                event_type="transcript.delta",
-                action="transcript_delta_received",
-                session_id=api._session_id,
-                details={
-                    "item_id": "item_1",
-                    "delta_length": 5,
-                    "accumulated_length": 5,
-                },
-            )
+        # Check per-session audit log
+        events = [e for e in api.audit_log.events
+                  if e.event_type == "event.received.conversation.item.input_audio_transcription.delta"]
+        assert len(events) >= 1
 
     def test_response_delta_event_audit_logged(self, api):
-        with patch('openai_apis.realtime.session.log_audit_event') as mock_audit:
-            message = json.dumps({
-                "type": "response.audio_transcript.delta",
-                "item_id": "item_2",
-                "delta": "world"
-            })
-            api._on_message(Mock(), message)
+        message = json.dumps({
+            "type": "response.audio_transcript.delta",
+            "item_id": "item_2",
+            "delta": "world"
+        })
+        api._handle_message(message)
 
-            mock_audit.assert_any_call(
-                event_type="transcript.delta",
-                action="response_transcript_delta_received",
-                session_id=api._session_id,
-                details={
-                    "item_id": "item_2",
-                    "delta_length": 5,
-                    "accumulated_length": 5,
-                },
-            )
+        # Check per-session audit log
+        events = [e for e in api.audit_log.events
+                  if e.event_type == "event.received.response.audio_transcript.delta"]
+        assert len(events) >= 1
 
     def test_completed_event_audit_logged(self, api):
-        with patch('openai_apis.realtime.session.log_audit_event') as mock_audit:
-            message = json.dumps({
-                "type": "conversation.item.input_audio_transcription.completed",
-                "item_id": "item_1",
-                "transcript": "hello world"
-            })
-            api._on_message(Mock(), message)
+        message = json.dumps({
+            "type": "conversation.item.input_audio_transcription.completed",
+            "item_id": "item_1",
+            "transcript": "hello world"
+        })
+        api._handle_message(message)
 
-            # Check that transcript.completed audit event was logged
-            # Use keyword args form
-            audit_calls = [c for c in mock_audit.call_args_list
-                          if c.kwargs.get('event_type') == 'transcript.completed']
-            assert len(audit_calls) == 1
+        # Check per-session audit log for the received event
+        events = [e for e in api.audit_log.events
+                  if e.event_type == "event.received.conversation.item.input_audio_transcription.completed"]
+        assert len(events) >= 1

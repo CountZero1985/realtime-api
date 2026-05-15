@@ -132,5 +132,10 @@ class BaseConfig:
     def __post_init__(self):
         if self.api_key is None:
             self.api_key = os.environ.get("OPENAI_API_KEY")
+        if self.api_key is None:
+            raise ValueError(
+                "OPENAI_API_KEY must be provided either via api_key parameter "
+                "or OPENAI_API_KEY environment variable"
+            )
         if self.timeout <= 0:
             raise ValueError(f"timeout must be positive, got {self.timeout}")
