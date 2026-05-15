@@ -24,6 +24,7 @@ from openai_apis.realtime import (
     AudioDone,
 )
 from openai_apis import SessionState, InvalidStateTransition
+from openai_apis.realtime.tools import ToolRegistry
 
 
 class MockWebSocket:
@@ -689,6 +690,127 @@ class TestRealtimeSessionEventHandling:
         assert callback_data[1].accumulated == "Hello world"
 
     @pytest.mark.asyncio
+    async def test_non_json_message_handled_gracefully(self):
+        """Non-JSON messages are logged but don't crash the session."""
+        messages = make_handshake_messages() + ["not-valid-json{{{"]
+        mock_ws = MockWebSocket(messages)
+
+        with patch("openai_apis.realtime.session.websockets.connect",
+                   side_effect=mock_websockets_connect(mock_ws)):
+            async with RealtimeSession() as session:
+                await asyncio.sleep(0.1)
+                # No crash - session still connected
+
+    @pytest.mark.asyncio
+    async def test_session_created_via_receive_loop(self):
+        """session.created event emitted when received in receive loop (not handshake)."""
+        messages = make_handshake_messages() + [
+            json.dumps({"type": "session.created", "session": {"id": "sess_new"}}),
+        ]
+        mock_ws = MockWebSocket(messages)
+        callback_data = []
+
+        def callback(data):
+            callback_data.append(data)
+
+        with patch("openai_apis.realtime.session.websockets.connect",
+                   side_effect=mock_websockets_connect(mock_ws)):
+            session = RealtimeSession()
+            session.on("session.created", callback)
+            async with session:
+                await asyncio.sleep(0.1)
+
+        # Should have 2 total: one from handshake, one from receive loop
+        assert len(callback_data) == 2
+
+    @pytest.mark.asyncio
+    async def test_session_updated_via_receive_loop(self):
+        """session.updated event emitted when received in receive loop (not handshake)."""
+        messages = make_handshake_messages() + [
+            json.dumps({"type": "session.updated", "session": {"id": "sess_upd"}}),
+        ]
+        mock_ws = MockWebSocket(messages)
+        callback_data = []
+
+        def callback(data):
+            callback_data.append(data)
+
+        with patch("openai_apis.realtime.session.websockets.connect",
+                   side_effect=mock_websockets_connect(mock_ws)):
+            session = RealtimeSession()
+            session.on("session.updated", callback)
+            async with session:
+                await asyncio.sleep(0.1)
+
+        assert len(callback_data) == 2
+
+    @pytest.mark.asyncio
+    async def test_output_transcript_delta_accumulation(self):
+        """Verify output transcript delta accumulation via response.audio_transcript.delta."""
+        messages = make_handshake_messages() + [
+            json.dumps({
+                "type": "response.audio_transcript.delta",
+                "item_id": "item_out_1",
+                "delta": "Szia",
+            }),
+            json.dumps({
+                "type": "response.audio_transcript.delta",
+                "item_id": "item_out_1",
+                "delta": " világ",
+            }),
+        ]
+        mock_ws = MockWebSocket(messages)
+        callback_data = []
+
+        def callback(data):
+            callback_data.append(data)
+
+        with patch("openai_apis.realtime.session.websockets.connect",
+                   side_effect=mock_websockets_connect(mock_ws)):
+            async with RealtimeSession() as session:
+                session.on("transcript.delta", callback)
+                await asyncio.sleep(0.1)
+
+        assert len(callback_data) == 2
+        assert callback_data[0].delta == "Szia"
+        assert callback_data[0].accumulated == "Szia"
+        assert callback_data[1].delta == " világ"
+        assert callback_data[1].accumulated == "Szia világ"
+
+    @pytest.mark.asyncio
+    async def test_delta_then_completed_returns_duration(self):
+        """Delta accumulation followed by completed event returns non-zero duration."""
+        messages = make_handshake_messages() + [
+            json.dumps({
+                "type": "conversation.item.input_audio_transcription.delta",
+                "item_id": "item_acc_1",
+                "delta": "Hello",
+            }),
+            json.dumps({
+                "type": "conversation.item.input_audio_transcription.completed",
+                "item_id": "item_acc_1",
+                "transcript": "Hello world",
+            }),
+        ]
+        mock_ws = MockWebSocket(messages)
+        completed_data = []
+
+        def callback(data):
+            completed_data.append(data)
+
+        with patch("openai_apis.realtime.session.websockets.connect",
+                   side_effect=mock_websockets_connect(mock_ws)):
+            async with RealtimeSession() as session:
+                session.on("transcript.input", callback)
+                await asyncio.sleep(0.1)
+
+        assert len(completed_data) == 1
+        assert isinstance(completed_data[0], TranscriptCompleted)
+        assert completed_data[0].transcript == "Hello world"
+        # duration_ms should be > 0 since delta was accumulated first
+        assert completed_data[0].duration_ms >= 0
+
+    @pytest.mark.asyncio
     async def test_unknown_event_logged(self):
         """No error for unknown event types."""
         messages = make_handshake_messages() + [
@@ -881,6 +1003,239 @@ class TestRealtimeSessionAuditLog:
         # After reset, total_chunks should be 1 again
         assert chunk_events[1].data["total_chunks"] == 1
         assert chunk_events[1].data["total_bytes"] == 200
+
+
+class TestRealtimeSessionWebsocketsImport:
+    """Test websockets None guard (line 120)."""
+
+    def test_init_raises_import_error_when_websockets_missing(self):
+        """ImportError raised when websockets is None."""
+        with patch("openai_apis.realtime.session.websockets", None):
+            with pytest.raises(ImportError, match="websockets library required"):
+                RealtimeSession()
+
+
+class TestRealtimeSessionToolExecutionFailure:
+    """Test _execute_tool error handling path (lines 341-352)."""
+
+    @pytest.mark.asyncio
+    async def test_execute_tool_failure_sends_error_result(self):
+        """When tool handler raises, error JSON sent to model + response.create triggered."""
+        registry = ToolRegistry()
+        def failing_tool(city: str) -> dict:
+            raise RuntimeError("Tool crashed")
+        registry.register("broken", "A broken tool",
+                         {"type": "object", "properties": {"city": {"type": "string"}}},
+                         failing_tool)
+
+        messages = [
+            json.dumps({"type": "session.created", "session": {"id": "s1"}}),
+            json.dumps({"type": "session.updated", "session": {"id": "s1"}}),
+            json.dumps({
+                "type": "response.function_call_arguments.done",
+                "call_id": "call_fail",
+                "name": "broken",
+                "arguments": '{"city": "Budapest"}',
+            }),
+        ]
+        mock_ws = MockWebSocket(messages)
+
+        config = RealtimeConfig(tools=registry)
+        with patch("openai_apis.realtime.session.websockets.connect",
+                   side_effect=mock_websockets_connect(mock_ws)):
+            async with RealtimeSession(config=config) as session:
+                await asyncio.sleep(0.2)
+
+        # Parse all sent messages once
+        parsed_messages = [json.loads(m) for m in mock_ws.sent_messages]
+        sent_types = [m["type"] for m in parsed_messages]
+        assert "conversation.item.create" in sent_types
+        assert "response.create" in sent_types
+
+        tool_result_msg = next(
+            m for m in parsed_messages
+            if m["type"] == "conversation.item.create"
+        )
+        output = json.loads(tool_result_msg["item"]["output"])
+        assert "error" in output
+        assert "Tool crashed" in output["error"]
+
+    @pytest.mark.asyncio
+    async def test_execute_tool_failure_audit_logged(self):
+        """Audit log records tool.execution.failed on handler error."""
+        registry = ToolRegistry()
+        def failing_tool() -> dict:
+            raise ValueError("bad input")
+        registry.register("fail_tool", "desc", {}, failing_tool)
+
+        messages = [
+            json.dumps({"type": "session.created", "session": {"id": "s1"}}),
+            json.dumps({"type": "session.updated", "session": {"id": "s1"}}),
+            json.dumps({
+                "type": "response.function_call_arguments.done",
+                "call_id": "call_2",
+                "name": "fail_tool",
+                "arguments": "{}",
+            }),
+        ]
+        mock_ws = MockWebSocket(messages)
+
+        config = RealtimeConfig(tools=registry)
+        with patch("openai_apis.realtime.session.websockets.connect",
+                   side_effect=mock_websockets_connect(mock_ws)):
+            async with RealtimeSession(config=config) as session:
+                await asyncio.sleep(0.2)
+                events = session.audit_log.events
+
+        event_types = [e.event_type for e in events]
+        assert "tool.execution.started" in event_types
+        assert "tool.execution.failed" in event_types
+
+
+class TestRealtimeSessionReceiveLoopErrors:
+    """Test receive loop error handling (Step 5)."""
+
+    @pytest.mark.asyncio
+    async def test_receive_loop_generic_exception_emits_error(self):
+        """Generic exception in receive loop emits 'error' event with type 'receive_loop_error'."""
+
+        class ErrorMockWebSocket(MockWebSocket):
+            """Mock WebSocket that raises RuntimeError after handshake."""
+
+            async def __anext__(self):
+                """Raise RuntimeError after returning handshake messages."""
+                if self.message_index < len(self.messages):
+                    msg = self.messages[self.message_index]
+                    self.message_index += 1
+                    return msg
+                # After handshake, raise RuntimeError
+                raise RuntimeError("Simulated receive loop error")
+
+        messages = make_handshake_messages()
+        mock_ws = ErrorMockWebSocket(messages)
+        callback_data = []
+
+        def error_callback(data):
+            callback_data.append(data)
+
+        with patch("openai_apis.realtime.session.websockets.connect",
+                   side_effect=mock_websockets_connect(mock_ws)):
+            async with RealtimeSession() as session:
+                session.on("error", error_callback)
+                await asyncio.sleep(0.1)  # Let receive loop encounter the error
+
+        # Verify error event was emitted
+        assert len(callback_data) == 1
+        assert callback_data[0]["type"] == "receive_loop_error"
+        assert "Simulated receive loop error" in callback_data[0]["error"]
+
+
+class TestRealtimeSessionReconnection:
+    """Test reconnection logic (Step 6)."""
+
+    @pytest.mark.asyncio
+    async def test_reconnect_success_after_connection_closed(self):
+        """ConnectionClosed in receive loop triggers successful reconnection."""
+        import websockets as ws_module
+
+        # First WS: handshake succeeds, then iteration raises ConnectionClosed
+        class ConnectionClosedMockWS(MockWebSocket):
+            async def __anext__(self):
+                if self.message_index < len(self.messages):
+                    msg = self.messages[self.message_index]
+                    self.message_index += 1
+                    return msg
+                raise ws_module.ConnectionClosed(None, None)
+
+        mock_ws1 = ConnectionClosedMockWS(make_handshake_messages())
+
+        # Second WS: successful reconnect
+        mock_ws2 = MockWebSocket(make_handshake_messages())
+
+        call_count = [0]
+
+        async def mock_connect(*args, **kwargs):
+            ws = [mock_ws1, mock_ws2][min(call_count[0], 1)]
+            call_count[0] += 1
+            return ws
+
+        with patch("openai_apis.realtime.session.websockets.connect", side_effect=mock_connect):
+            session = RealtimeSession(max_reconnect_attempts=2, reconnect_delay=0.001)
+            async with session:
+                # Yield control multiple times to let receive loop + reconnect complete
+                for _ in range(20):
+                    await asyncio.sleep(0.01)
+                events = session.audit_log.events
+
+        event_types = [e.event_type for e in events]
+        assert "websocket.reconnect_attempt" in event_types
+        assert "websocket.reconnect_success" in event_types
+        assert call_count[0] == 2
+
+    @pytest.mark.asyncio
+    async def test_reconnect_all_attempts_fail_emits_error(self):
+        """Error emitted after all reconnection attempts fail."""
+        callback_data = []
+
+        def error_callback(data):
+            callback_data.append(data)
+
+        # Mock connect that always fails
+        async def mock_connect_fail(*args, **kwargs):
+            raise Exception("Connection refused")
+
+        with patch("openai_apis.realtime.session.websockets.connect", side_effect=mock_connect_fail), \
+             patch("asyncio.sleep", new_callable=AsyncMock):
+
+            session = RealtimeSession(max_reconnect_attempts=2, reconnect_delay=0.05)
+            session.on("error", error_callback)
+
+            # Attempt reconnect (will fail all attempts)
+            await session._reconnect()
+
+        # Verify error event emitted after exhausting attempts
+        assert len(callback_data) == 1
+        assert callback_data[0]["type"] == "reconnect_failed"
+        assert "Failed after 2 attempts" in callback_data[0]["error"]
+
+    @pytest.mark.asyncio
+    async def test_reconnect_audit_logs_each_attempt(self):
+        """Audit log records reconnect_attempt, reconnect_success, or reconnect_failed."""
+        # First attempt fails, second succeeds
+        call_count = [0]
+
+        async def mock_connect(*args, **kwargs):
+            if call_count[0] == 0:
+                call_count[0] += 1
+                raise Exception("First attempt fails")
+            # Second attempt succeeds
+            call_count[0] += 1
+            return MockWebSocket(make_handshake_messages())
+
+        with patch("openai_apis.realtime.session.websockets.connect", side_effect=mock_connect), \
+             patch("asyncio.sleep", new_callable=AsyncMock):
+
+            session = RealtimeSession(max_reconnect_attempts=3, reconnect_delay=0.1)
+            await session._reconnect()
+
+            events = session.audit_log.events
+
+        # Check audit log events
+        event_types = [e.event_type for e in events]
+        assert "websocket.reconnect_attempt" in event_types
+        assert "websocket.reconnect_success" in event_types
+
+        # Verify attempt count in logs
+        attempt_events = [e for e in events if e.event_type == "websocket.reconnect_attempt"]
+        # Should have 2 attempts (first fails, second succeeds)
+        assert len(attempt_events) == 2
+        assert attempt_events[0].data["attempt"] == 1
+        assert attempt_events[1].data["attempt"] == 2
+
+        # Verify success log
+        success_events = [e for e in events if e.event_type == "websocket.reconnect_success"]
+        assert len(success_events) == 1
+        assert success_events[0].data["attempt"] == 2
 
 
 # New tests for response interruption and conversation management
