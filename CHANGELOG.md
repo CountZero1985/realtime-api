@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **README.md rewrite** - Restructured README to be concise and user-focused (issue #37):
+  - **New structure**: Overview, Installation, Quick Start, Configuration, Examples, API Reference sections
+  - **Reduced length**: From ~657 lines to 252 lines by removing verbose API usage sections that duplicated `docs/API.md`
+  - **Quick Start**: Added three concise code snippets (Transcription, TTS, Realtime) showing essential usage patterns
+  - **API Reference table**: Added table of main classes with one-line descriptions (previously missing)
+  - **Configuration section**: Consolidated VAD, audio format, language, voice, and tool calling examples
+  - **Examples section**: Simplified to list runnable scripts with brief descriptions
+  - **Removed redundant content**: Deleted verbose sections that are better covered in `docs/API.md` (Session Lifecycle, detailed API usage, Per-Session Audit Logging)
+  - README now serves as a high-level user guide with links to comprehensive documentation in `docs/`
+
 ### Added
 
 - **End-to-End Integration Tests** - Comprehensive E2E test suite exercising complete API workflows (issue #38):
