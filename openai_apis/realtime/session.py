@@ -486,6 +486,12 @@ class RealtimeSession(BaseSession):
             self._emit("transcript.input", TranscriptCompleted(
                 item_id=item_id, transcript=transcript, duration_ms=duration_ms,
             ))
+            # Track in conversation history
+            self._conversation_history.append(ConversationItem(
+                role="user",
+                content=transcript,
+                item_id=item_id,
+            ))
 
         # Output transcription (model speech as text)
         elif event_type == "response.audio_transcript.delta":
@@ -502,6 +508,12 @@ class RealtimeSession(BaseSession):
             duration_ms = self._complete_accumulation(item_id)
             self._emit("transcript.output", TranscriptCompleted(
                 item_id=item_id, transcript=transcript, duration_ms=duration_ms,
+            ))
+            # Track in conversation history
+            self._conversation_history.append(ConversationItem(
+                role="assistant",
+                content=transcript,
+                item_id=item_id,
             ))
 
         # Audio response
