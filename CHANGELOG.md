@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Public API Cleanup** - Simplified `openai_apis/__init__.py` to export minimal, clean public API surface (issue #33):
+  - **Reduced exports**: From 42 symbols to 16 core symbols organized into logical groups
+  - **Core sessions**: `TranscriptionSession`, `TranscriptionConfig`, `RealtimeSession`, `RealtimeConfig`, `TTSProvider`, `TTSConfig`, `TTSRegistry`
+  - **Shared config**: `AudioFormat`, `VADConfig`
+  - **Tools & plugins**: `ToolRegistry`, `MCPPlugin`, `MCPPluginManager`
+  - **Session base**: `BaseSession`, `SessionState`, `SessionAuditLog`
+  - **Module docstring**: Added quick start examples and usage documentation
+  - **Removed from top-level API**: Stateless APIs (`TranscriptionAPI`, `TTSAPI`), provider implementations (`OpenAITTSProvider`, `ElevenLabsTTSProvider`), event types, exceptions, internal utilities - all still accessible via submodule imports
+  - **`TTSProvider` alias**: Added `TTSProvider = BaseTTSProvider` alias in `openai_apis/tts/__init__.py` for cleaner public API naming
+  - **Breaking change**: Code using removed top-level imports must migrate to submodule imports (e.g., `from openai_apis.transcription import TranscriptionAPI` or `from openai_apis.tts import OpenAITTSProvider`)
+
 ### Added
 
 - **Realtime Module Enhanced Test Coverage** - Expanded unit test suite to achieve 99% coverage for the realtime module (issue #31):

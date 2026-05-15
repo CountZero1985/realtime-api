@@ -100,12 +100,17 @@ Direct WebSocket connection to OpenAI Realtime API with real-time audio streamin
 ### Transcription (Speech-to-Text)
 
 ```python
-from openai_apis import TranscriptionAPI, TranscriptionConfig, AudioFormat
+# For WebSocket streaming transcription (recommended)
+from openai_apis import TranscriptionSession, TranscriptionConfig, AudioFormat
 
-# Basic usage with defaults (24kHz, mono, int16, pcm16)
-api = TranscriptionAPI()
-transcript = await api.transcribe_file("audio.wav")
-print(transcript)
+# Basic usage with async context manager
+async with TranscriptionSession() as session:
+    # Register callbacks
+    session.on("transcript.completed", lambda t: print(f"Final: {t.transcript}"))
+
+    # Send audio and commit
+    await session.send_audio(audio_chunk)
+    await session.commit_audio()
 
 # With custom configuration
 config = TranscriptionConfig(
@@ -113,12 +118,16 @@ config = TranscriptionConfig(
     language="hu",
     keywords=["technical", "OpenAI"]
 )
-api = TranscriptionAPI(config=config)
+async with TranscriptionSession(config) as session:
+    # Use session...
+    pass
 
-# Custom audio format
-audio_format = AudioFormat(sample_rate=48000, channels=2)
-config = TranscriptionConfig(audio_format=audio_format)
-api = TranscriptionAPI(config=config)
+# For stateless file/array transcription (legacy API)
+from openai_apis.transcription import TranscriptionAPI
+
+api = TranscriptionAPI()
+transcript = await api.transcribe_file("audio.wav")
+print(transcript)
 
 # From numpy array
 import numpy as np
@@ -132,11 +141,12 @@ transcript = api.transcribe_file_sync("audio.wav")
 ### Text-to-Speech (TTS)
 
 ```python
-from openai_apis import TTSAPI, TTSConfig, AudioFormat
+from openai_apis import TTSRegistry, TTSConfig, AudioFormat
 
-# Basic usage (defaults to 24kHz, mono, int16, pcm16)
-api = TTSAPI()
-audio = await api.synthesize("Szia! Hogy vagy?")
+# Basic usage via registry (recommended)
+config = TTSConfig(voice="sage", speed=1.0)
+tts = TTSRegistry.create(config)
+audio = await tts.synthesize("Szia! Hogy vagy?")
 # Returns numpy array ready for playback
 
 # With custom voice and speed
@@ -145,7 +155,7 @@ config = TTSConfig(
     speed=1.5,
     model="gpt-4o-mini-tts"
 )
-api = TTSAPI(config=config)
+tts = TTSRegistry.create(config)
 
 # Instruction-based voice steering (gpt-4o-mini-tts only)
 config = TTSConfig(
@@ -153,26 +163,26 @@ config = TTSConfig(
     voice="ash",
     instructions="Speak in a warm, friendly tone with slight excitement"
 )
-api = TTSAPI(config=config)
-audio = await api.synthesize("Hello! How can I help you today?")
+tts = TTSRegistry.create(config)
+audio = await tts.synthesize("Hello! How can I help you today?")
 
 # Custom audio format for higher quality
 audio_format = AudioFormat(sample_rate=48000, dtype="float32")
 config = TTSConfig(audio_format=audio_format)
-api = TTSAPI(config=config)
+tts = TTSRegistry.create(config)
 
 # Save to file
-await api.synthesize_to_file("Hello world!", "output.mp3")
+await tts.synthesize_to_file("Hello world!", "output.mp3")
 
 # Streaming synthesis with configurable chunk size
 config = TTSConfig(chunk_size=2048)  # 2KB chunks
-api = TTSAPI(config=config)
-async for chunk in api.synthesize_stream("Long text..."):
+tts = TTSRegistry.create(config)
+async for chunk in tts.synthesize_stream("Long text..."):
     # Process audio chunks as they arrive (uniform 2KB chunks)
     pass
 
 # Or override chunk size per call
-async for chunk in api.synthesize_stream("Text", chunk_size=512):
+async for chunk in tts.synthesize_stream("Text", chunk_size=512):
     # 512-byte chunks for this call only
     pass
 
@@ -181,7 +191,7 @@ import asyncio
 backpressure = asyncio.Event()
 backpressure.set()  # Must be set initially to allow streaming
 
-async for chunk in api.synthesize_stream("Text", backpressure_event=backpressure):
+async for chunk in tts.synthesize_stream("Text", backpressure_event=backpressure):
     # Process chunk
     play_audio(chunk)
     # Pause streaming if needed
@@ -192,7 +202,13 @@ async for chunk in api.synthesize_stream("Text", backpressure_event=backpressure
         backpressure.set()  # Resumes streaming
 
 # Sync usage
-audio = api.synthesize_sync("Hello!")
+audio = tts.synthesize_sync("Hello!")
+
+# Direct provider import (alternative)
+from openai_apis.tts import OpenAITTSProvider  # or TTSAPI (alias)
+
+api = OpenAITTSProvider()
+audio = await api.synthesize("Hello!")
 ```
 
 **Available voices:**
@@ -313,8 +329,8 @@ async with RealtimeSession(config) as session:
 **Streaming transcript events with delta callbacks:**
 
 ```python
-from openai_apis import (
-    RealtimeSession,
+from openai_apis import RealtimeSession, RealtimeConfig
+from openai_apis.realtime.events import (
     AudioDelta,
     AudioDone,
     TranscriptDelta,
@@ -369,7 +385,8 @@ asyncio.run(main())
 All API sessions inherit from `BaseSession`, which provides automatic lifecycle management:
 
 ```python
-from openai_apis import BaseSession, SessionState, InvalidStateTransition
+from openai_apis import BaseSession, SessionState
+from openai_apis._session import InvalidStateTransition
 
 # Using async context manager (recommended)
 async with MySession() as session:
@@ -404,7 +421,7 @@ except InvalidStateTransition as e:
 All API modules support customizable audio formats via `AudioFormat`:
 
 ```python
-from openai_apis import AudioFormat, TranscriptionConfig, TTSAPI
+from openai_apis import AudioFormat, TranscriptionConfig, TTSConfig, TTSRegistry
 
 # Default format (24kHz, mono, int16, pcm16)
 fmt = AudioFormat()
@@ -468,7 +485,8 @@ async with TranscriptionSession(config) as session:
 Each session has its own structured audit log accessible via the `audit_log` property:
 
 ```python
-from openai_apis import BaseSession, SessionAuditLog, AuditEvent
+from openai_apis import SessionAuditLog
+from openai_apis._logging import AuditEvent
 
 async with MySession() as session:
     # Log custom events

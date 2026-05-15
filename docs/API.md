@@ -89,10 +89,34 @@ OPENAI_API_KEY=sk-...
 
 ## Quick Start
 
+**Note:** The `openai_apis` package exports a minimal, clean public API from the package root. For session-based APIs (recommended), use:
+- `TranscriptionSession` for realtime transcription
+- `RealtimeSession` for realtime voice
+- `TTSRegistry.create()` for text-to-speech
+
+Legacy stateless APIs (`TranscriptionAPI`, `TTSAPI`) are still available via submodule imports (e.g., `from openai_apis.transcription import TranscriptionAPI`).
+
 ### Transcription (Speech-to-Text)
 
+**WebSocket Session (Recommended):**
+
 ```python
-from openai_apis import TranscriptionAPI
+from openai_apis import TranscriptionSession, TranscriptionConfig
+
+# Use async context manager
+async with TranscriptionSession() as session:
+    # Register callbacks
+    session.on("transcript.completed", lambda t: print(f"Final: {t.transcript}"))
+
+    # Send audio and commit
+    await session.send_audio(audio_chunk)
+    await session.commit_audio()
+```
+
+**Stateless API (Legacy):**
+
+```python
+from openai_apis.transcription import TranscriptionAPI
 import numpy as np
 
 # Initialize API (uses OPENAI_API_KEY from environment)
@@ -110,19 +134,31 @@ print(transcript)
 
 ### TTS (Text-to-Speech)
 
+**Via Registry (Recommended):**
+
 ```python
-from openai_apis import TTSAPI
+from openai_apis import TTSRegistry, TTSConfig
 import numpy as np
 
-# Initialize API
-api = TTSAPI()
+# Create provider via registry
+config = TTSConfig(voice="sage", speed=1.0)
+tts = TTSRegistry.create(config)
 
 # Synthesize text to audio (async)
-audio = await api.synthesize("Hello, how are you?")
+audio = await tts.synthesize("Hello, how are you?")
 # audio is numpy array (int16, mono, 24kHz) ready for playback
 
 # Save to file (sync)
-api.synthesize_to_file_sync("Hello world!", "output.mp3")
+tts.synthesize_to_file_sync("Hello world!", "output.mp3")
+```
+
+**Direct Provider Import (Alternative):**
+
+```python
+from openai_apis.tts import OpenAITTSProvider  # or TTSAPI (alias)
+
+api = OpenAITTSProvider()
+audio = await api.synthesize("Hello!")
 ```
 
 ### Realtime Voice (WebSocket)
@@ -942,6 +978,8 @@ provider_class = get_provider("openai")
 
 Abstract base class for TTS providers. Defines the provider interface that all TTS providers must implement. Provides concrete sync wrapper methods that delegate to the async abstract methods.
 
+**Public API Name:** `TTSProvider` (exported from package root as an alias for `BaseTTSProvider`)
+
 **Type:** Abstract class
 
 #### Abstract Methods
@@ -1173,16 +1211,23 @@ provider_class = get_provider("openai")  # Returns OpenAITTSProvider
 **Basic synthesis:**
 
 ```python
-from openai_apis import TTSAPI
+from openai_apis import TTSRegistry, TTSConfig
 
-api = TTSAPI()
+# Via registry (recommended)
+config = TTSConfig(voice="sage")
+tts = TTSRegistry.create(config)
 
 # Synthesize to numpy array (async)
-audio = await api.synthesize("Hello, how are you?")
+audio = await tts.synthesize("Hello, how are you?")
 # audio is int16 numpy array, ready for playback
 
 # Synthesize to file (sync)
-api.synthesize_to_file_sync("Hello world!", "output.mp3")
+tts.synthesize_to_file_sync("Hello world!", "output.mp3")
+
+# Or direct provider import (alternative)
+from openai_apis.tts import OpenAITTSProvider
+api = OpenAITTSProvider()
+audio = await api.synthesize("Hello!")
 ```
 
 **Streaming synthesis:**
@@ -1244,7 +1289,7 @@ for i, audio in enumerate(audio_arrays):
 **Instruction-based voice steering (gpt-4o-mini-tts only):**
 
 ```python
-from openai_apis import TTSAPI, TTSConfig
+from openai_apis import TTSRegistry, TTSConfig
 
 # Configure with instructions
 config = TTSConfig(
@@ -1252,13 +1297,13 @@ config = TTSConfig(
     voice="ash",
     instructions="Speak in a warm, friendly tone with slight excitement"
 )
-api = TTSAPI(config)
+tts = TTSRegistry.create(config)
 
 # Instructions from config are used automatically
-audio = await api.synthesize("Hello! How can I help you today?")
+audio = await tts.synthesize("Hello! How can I help you today?")
 
 # Or override per-call
-audio = await api.synthesize(
+audio = await tts.synthesize(
     "This is urgent!",
     instructions="Speak quickly with urgency"
 )
@@ -1267,12 +1312,13 @@ audio = await api.synthesize(
 **Error handling:**
 
 ```python
-from openai_apis import TTSAPI, TTSSynthesisError
+from openai_apis import TTSRegistry, TTSConfig
+from openai_apis.tts import TTSSynthesisError
 
-api = TTSAPI()
+tts = TTSRegistry.create(TTSConfig())
 
 try:
-    audio = await api.synthesize("Hello world!")
+    audio = await tts.synthesize("Hello world!")
 except TTSSynthesisError as e:
     print(f"TTS synthesis failed: {e}")
 ```
@@ -3194,74 +3240,83 @@ For complete logging documentation, see [docs/LOGGING_AUDIT_TRAIL.md](./LOGGING_
 
 Complete reference of all public exports from the `openai_apis` package.
 
-### Infrastructure
+### Public API (Recommended)
+
+The following symbols are exported from the package root (`openai_apis.__init__.py`):
 
 ```python
 from openai_apis import (
-    # Configuration
-    BaseConfig,
+    # Core sessions (recommended for new code)
+    TranscriptionSession,
+    TranscriptionConfig,
+    RealtimeSession,
+    RealtimeConfig,
+    TTSProvider,          # Alias for BaseTTSProvider
+    TTSConfig,
+    TTSRegistry,
+
+    # Shared config
     AudioFormat,
     VADConfig,
 
-    # Session management
+    # Tools & plugins
+    ToolRegistry,
+    MCPPlugin,
+    MCPPluginManager,
+
+    # Session base (advanced usage)
     BaseSession,
     SessionState,
-    InvalidStateTransition,
+    SessionAuditLog,
+)
+```
 
-    # Logging & audit
+### Submodule Imports (Advanced/Legacy)
+
+For advanced usage or backward compatibility, additional symbols are available via submodule imports:
+
+#### Infrastructure (Internal)
+
+```python
+from openai_apis._config import BaseConfig
+from openai_apis._session import InvalidStateTransition
+from openai_apis._logging import (
+    AuditEvent,
     get_logger,
     set_correlation_id,
     log_audit_event,
     log_performance,
     log_api_call,
     setup_logging,
-    SessionAuditLog,
-    AuditEvent,
 )
 ```
 
-### Transcription API
+#### Transcription API
 
 ```python
-from openai_apis import (
-    TranscriptionAPI,
-    TranscriptionConfig,
-    TranscriptionSession,
-)
-
-# Submodule imports also supported
 from openai_apis.transcription import (
-    TranscriptionAPI,
+    TranscriptionAPI,        # Stateless API (legacy)
     TranscriptionConfig,
-    TranscriptionSession,
-    transcribe_audio,       # async convenience function
-    transcribe_file,        # async convenience function
-    transcribe_audio_sync,  # sync convenience function
-    transcribe_file_sync,   # sync convenience function
+    TranscriptionSession,    # WebSocket session (recommended, also in public API)
+    transcribe_audio,        # async convenience function
+    transcribe_file,         # async convenience function
+    transcribe_audio_sync,   # sync convenience function
+    transcribe_file_sync,    # sync convenience function
 )
 ```
 
-### TTS API
+#### TTS API
 
 ```python
-from openai_apis import (
-    TTSAPI,                 # Alias for OpenAITTSProvider
-    TTSConfig,
-    TTSRegistry,            # Provider registry class
-    OpenAITTSProvider,
-    ElevenLabsTTSProvider,  # Stub provider
-    BaseTTSProvider,
-)
-
-# Submodule imports also supported
 from openai_apis.tts import (
-    TTSAPI,
-    TTSConfig,
-    TTSRegistry,            # Provider registry class
-    OpenAITTSProvider,
-    ElevenLabsTTSProvider,  # Stub provider
-    BaseTTSProvider,
-    TTSSynthesisError,       # exception for TTS errors
+    TTSAPI,                  # Alias for OpenAITTSProvider
+    TTSConfig,               # Also in public API
+    TTSRegistry,             # Also in public API
+    OpenAITTSProvider,       # Direct provider access
+    ElevenLabsTTSProvider,   # Stub provider
+    BaseTTSProvider,         # Use TTSProvider from public API instead
+    TTSProvider,             # Public alias for BaseTTSProvider
+    TTSSynthesisError,       # Exception for TTS errors
     synthesize_text,         # async convenience function
     synthesize_to_file,      # async convenience function
     synthesize_text_sync,    # sync convenience function
@@ -3271,25 +3326,28 @@ from openai_apis.tts import (
 )
 ```
 
-### Realtime Voice API
+#### Realtime Voice API
 
 ```python
-from openai_apis import (
-    RealtimeSession,
-    RealtimeVoiceAPI,    # backward-compatible alias for RealtimeSession
-    RealtimeConfig,
-    RealtimeAgentState,
-    ToolRegistry,        # Tool/function calling registry
-    # Event types for streaming callbacks
+from openai_apis.realtime import (
+    RealtimeSession,         # Also in public API
+    RealtimeVoiceAPI,        # Backward-compatible alias for RealtimeSession
+    RealtimeConfig,          # Also in public API
+    RealtimeAgentState,      # Internal state manager
+    ToolRegistry,            # Also in public API
+)
+
+# Event types for streaming callbacks
+from openai_apis.realtime.events import (
     AudioDelta,
     AudioDone,
     TranscriptDelta,
     TranscriptCompleted,
     ErrorEvent,
-    ConversationItem,    # Conversation history entry
+    ConversationItem,        # Conversation history entry
 )
 
-# Submodule imports also supported
+# Submodule imports also supported (legacy path)
 from openai_apis.realtime import (
     RealtimeSession,
     RealtimeVoiceAPI,    # backward-compatible alias
