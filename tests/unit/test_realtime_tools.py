@@ -6,6 +6,13 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from openai_apis.realtime.tools import ToolRegistry, ToolDefinition
 
 
+def mock_websockets_connect(mock_ws):
+    """Create async mock for websockets.connect that returns mock_ws."""
+    async def _connect(*args, **kwargs):
+        return mock_ws
+    return _connect
+
+
 # --- ToolRegistry Registration Tests ---
 
 class TestToolRegistryRegister:
@@ -249,7 +256,7 @@ class TestToolRegistrySessionIntegration:
 
         config = RealtimeConfig(tools=registry)
         with patch("openai_apis.realtime.session.websockets.connect",
-                   side_effect=lambda *a, **kw: asyncio.coroutine(lambda: mock_ws)()):
+                   side_effect=mock_websockets_connect(mock_ws)):
             async with RealtimeSession(config=config) as session:
                 await asyncio.sleep(0.2)  # Let receive loop + tool execution process
 
@@ -306,7 +313,7 @@ class TestToolRegistrySessionIntegration:
         mock_ws = MockWS()
         config = RealtimeConfig(tools=registry)
         with patch("openai_apis.realtime.session.websockets.connect",
-                   side_effect=lambda *a, **kw: asyncio.coroutine(lambda: mock_ws)()):
+                   side_effect=mock_websockets_connect(mock_ws)):
             async with RealtimeSession(config=config) as session:
                 await asyncio.sleep(0.2)
                 events = session.audit_log.events
