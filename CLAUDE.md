@@ -10,8 +10,10 @@ A real-time voice agent system integrating OpenAI's Realtime API and OpenAI Agen
 
 ```bash
 uv sync                              # Install dependencies
-pytest tests/ -v                     # Run tests
+pytest tests/ -v                     # Run all tests
 pytest tests/ --cov=openai_apis      # Tests with coverage
+pytest tests/unit/ -v                # Unit tests only
+pytest tests/integration/ -v         # Integration tests (E2E flows)
 
 # Run example scripts
 python examples/cli_agent.py         # Text-based agent (CLI)

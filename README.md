@@ -157,7 +157,6 @@ See [docs/API.md](docs/API.md) for full configuration reference.
 
 The `examples/` directory contains standalone applications:
 
-```bash
 python examples/cli_agent.py          # Text-based CLI agent
 python examples/voice_agent.py        # Push-to-talk voice agent
 python examples/realtime_websocket.py # Realtime WebSocket API
@@ -165,6 +164,26 @@ python examples/web_server/run.py     # FastAPI web server (requires [web] extra
 ```
 
 See the [examples/](examples/) directory for full source code and agent configurations.
+
+## Testing
+
+Run tests with pytest:
+
+```bash
+pytest tests/ -v                                    # All tests
+pytest tests/ --cov=openai_apis --cov-report=term-missing  # With coverage
+pytest tests/unit/ -v                               # Unit tests only
+pytest tests/integration/ -v                        # Integration tests only
+pytest tests/integration/test_e2e_flows.py -v       # E2E integration tests
+```
+
+**Test Suites:**
+- **Unit tests** (`tests/unit/`): Fast tests for individual components with full mocking
+- **Integration tests** (`tests/integration/`): E2E tests exercising complete API workflows with mock WebSocket backends
+  - `test_e2e_flows.py`: 7 test classes covering transcription, realtime voice, TTS, tool calling, audit logging, configuration, and error recovery (23 tests)
+  - `test_integration.py`: Additional integration scenarios
+  - `test_public_api.py`: Public API surface validation
+- **Web server tests** (`tests/test_web_server.py`, `tests/api/`): FastAPI endpoint tests
 
 ## API Reference
 

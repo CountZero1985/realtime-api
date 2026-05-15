@@ -3561,10 +3561,42 @@ The web server includes comprehensive tests in `tests/test_web_server.py` and `t
 - CORS header validation
 - Error handling (invalid requests, disconnections)
 
+**End-to-End Integration Tests:**
+
+The package includes comprehensive E2E integration tests in `tests/integration/test_e2e_flows.py` that exercise complete API workflows with mock WebSocket backends. These tests validate the full stack from session lifecycle to audit logging:
+
+**Test Classes:**
+- `TestTranscriptionFlow` - Full transcription flow: session create → audio send → delta events → completed → close, plus state transition validation
+- `TestRealtimeVoiceFlow` - Realtime voice flow: audio streaming → audio response → transcription → conversation history tracking
+- `TestTTSFlow` - TTS synthesis flows: provider creation → synthesize → audio output, file synthesis, registry factory pattern
+- `TestToolCallingFlow` - Tool execution: RealtimeSession with ToolRegistry → function call events → auto-execution → tool results → response generation
+- `TestAuditLogFlow` - Audit trail validation: session operations → audit event completeness → JSON export → file export → duration measurement
+- `TestConfigFlow` - Configuration propagation: config values → session.update messages → VAD modes → tool registry → audio format consistency
+- `TestErrorRecovery` - Error handling: connection drops → reconnection with exponential backoff → error event emission → invalid state transitions
+
+**Coverage:**
+- **Session lifecycle**: CREATED → CONNECTING → CONNECTED → DISCONNECTING → CLOSED state machine
+- **Event callbacks**: Delta events, completions, audio streaming, tool calls, errors
+- **Audit logging**: Per-session audit logs with automatic timestamps, duration tracking, JSON/file export
+- **Tool calling**: Sync and async tool handlers, auto-execution, result forwarding
+- **Configuration**: VAD modes, audio format defaults, tool registry, language settings
+- **Error recovery**: Connection failures, reconnection backoff, state validation
+- **Mock WebSocket**: Reusable `MockWebSocket` fixture from `tests/integration/conftest.py`
+
 Run tests:
 ```bash
+# Web server tests
 pytest tests/test_web_server.py -v
 pytest tests/api/test_web_server_schema.py -v
+
+# E2E integration tests
+pytest tests/integration/test_e2e_flows.py -v
+
+# All integration tests
+pytest tests/integration/ -v
+
+# With coverage report
+pytest tests/integration/test_e2e_flows.py --cov=openai_apis --cov-report=term-missing
 ```
 
 ### Dependencies
