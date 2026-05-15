@@ -279,6 +279,25 @@ class RealtimeSession(BaseSession):
         await self._send_event(event)
         self._audit_log.log("response.create_sent", {})
 
+    async def cancel_response(self) -> None:
+        """Cancel the current in-progress response (barge-in).
+
+        Sends a `response.cancel` event to the server. The server will
+        stop generating audio/text and emit `response.done` with status "cancelled".
+
+        Raises:
+            InvalidStateTransition: If not in CONNECTED state.
+
+        Audit Logging:
+            Logs 'response.cancel_sent' event with response_id if available.
+        """
+        self._assert_connected("cancel_response")
+        event: dict[str, Any] = {"type": "response.cancel"}
+        await self._send_event(event)
+        self._audit_log.log("response.cancel_sent", {
+            "response_id": self._current_response_id,
+        })
+
     async def update_session(self, **kwargs) -> None:
         """Update session configuration at runtime.
 
