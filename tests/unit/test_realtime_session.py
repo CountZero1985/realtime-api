@@ -701,6 +701,49 @@ class TestRealtimeSessionEventHandling:
                 # No crash - session still connected
 
     @pytest.mark.asyncio
+    async def test_session_created_via_receive_loop(self):
+        """session.created event emitted when received in receive loop (not handshake)."""
+        messages = make_handshake_messages() + [
+            json.dumps({"type": "session.created", "session": {"id": "sess_new"}}),
+        ]
+        mock_ws = MockWebSocket(messages)
+        callback_data = []
+
+        def callback(data):
+            callback_data.append(data)
+
+        with patch("openai_apis.realtime.session.websockets.connect",
+                   side_effect=mock_websockets_connect(mock_ws)):
+            session = RealtimeSession()
+            session.on("session.created", callback)
+            async with session:
+                await asyncio.sleep(0.1)
+
+        # Should have 2 total: one from handshake, one from receive loop
+        assert len(callback_data) == 2
+
+    @pytest.mark.asyncio
+    async def test_session_updated_via_receive_loop(self):
+        """session.updated event emitted when received in receive loop (not handshake)."""
+        messages = make_handshake_messages() + [
+            json.dumps({"type": "session.updated", "session": {"id": "sess_upd"}}),
+        ]
+        mock_ws = MockWebSocket(messages)
+        callback_data = []
+
+        def callback(data):
+            callback_data.append(data)
+
+        with patch("openai_apis.realtime.session.websockets.connect",
+                   side_effect=mock_websockets_connect(mock_ws)):
+            session = RealtimeSession()
+            session.on("session.updated", callback)
+            async with session:
+                await asyncio.sleep(0.1)
+
+        assert len(callback_data) == 2
+
+    @pytest.mark.asyncio
     async def test_unknown_event_logged(self):
         """No error for unknown event types."""
         messages = make_handshake_messages() + [
