@@ -9,6 +9,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Response Interruption and Conversation History** - Implemented response cancellation (barge-in) and conversation history tracking for `RealtimeSession` (issue #30):
+  - **Response cancellation**: New `cancel_response()` method sends `response.cancel` event for manual interruption of in-progress responses
+  - **VAD-based auto-interruption detection**: Automatic detection and logging when user speech interrupts assistant response (server VAD mode)
+  - **Conversation history tracking**: Automatic tracking of user and assistant transcripts as `ConversationItem` objects
+  - **`ConversationItem` dataclass**: New event type in `openai_apis/realtime/events.py` with role, content, and item_id fields
+  - **`get_conversation_history()` method**: Returns conversation history as list of role/content dicts for easy inspection
+  - **`clear_conversation()` method**: Clears in-memory conversation history with audit logging
+  - **Enhanced event handling**: New `response.created` and `input_audio_buffer.speech_started` event handlers for response lifecycle tracking
+  - **`response.interrupted` callback**: New callback event emitted when VAD detects user speech during assistant response
+  - **Response tracking**: Internal `_current_response_id` tracks in-progress responses for interruption context
+  - **Audit logging**: All interruption and conversation events logged (`response.cancel_sent`, `response.interrupted`, `conversation.cleared`)
+  - Comprehensive unit tests covering all new functionality with 100% coverage
+
+### Added
+
 - **ToolRegistry for Realtime API** - Implemented comprehensive tool/function calling registry system (issue #28):
   - **`ToolRegistry` class**: New registry in `openai_apis/realtime/tools.py` for managing tool definitions and handlers
   - **Tool registration**: `register(name, description, parameters, handler)` method for registering tools with JSON Schema parameters

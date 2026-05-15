@@ -1903,6 +1903,42 @@ When `audio.done` is emitted, an `audio.output_completed` audit event is automat
 - `audio_duration_s`: Duration of audio in seconds (calculated from byte count)
 - `streaming_duration_ms`: Wall-clock time from first chunk to completion
 
+#### ConversationItem
+
+**Type:** `@dataclass`
+
+A conversation history entry with role and content. Automatically tracked by `RealtimeSession` from completed transcription events.
+
+**Fields:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `role` | `str` | Speaker role: `"user"` or `"assistant"` |
+| `content` | `str` | Transcript text |
+| `item_id` | `str` | OpenAI conversation item ID |
+
+**Usage:**
+
+`ConversationItem` objects are created automatically by `RealtimeSession` when transcription events complete. Access them via `session.get_conversation_history()`:
+
+```python
+from openai_apis import RealtimeSession
+
+async with RealtimeSession() as session:
+    # ... conversation happens ...
+
+    # Get conversation history
+    history = session.get_conversation_history()
+    # Returns: [{"role": "user", "content": "..."}, {"role": "assistant", "content": "..."}]
+
+    # Or access raw ConversationItem objects from session internals (not recommended)
+    # items: list[ConversationItem] = session._conversation_history
+```
+
+**Tracked from events:**
+- `conversation.item.input_audio_transcription.completed` (user speech)
+- `response.audio_transcript.done` (assistant speech)
+
 ---
 
 ### RealtimeSession
@@ -1955,7 +1991,10 @@ Register a callback for session events.
 | `"transcript.output"` | `TranscriptCompleted` | Output transcription (model speech as text) |
 | `"transcript.delta"` | `TranscriptDelta` | Partial transcription updates (~200-500ms intervals) |
 | `"tool.call"` | `dict` | Tool/function call request (contains `call_id`, `name`, `arguments`) |
-| `"response.done"` | `dict` | Response generation complete (contains `response_id`) |
+| `"response.created"` | `dict` | Response generation started (contains `id` and `status`) |
+| `"response.done"` | `dict` | Response generation complete (contains `response_id` and `status`) |
+| `"response.interrupted"` | `dict` | Response interrupted by user speech (contains `response_id` and `trigger`) |
+| `"input_audio_buffer.speech_started"` | `dict` | VAD detected user speech start (raw event data) |
 | `"error"` | `ErrorEvent` | Error events from the API |
 | `"session.created"` | `dict` | Server session created (contains session metadata) |
 | `"session.updated"` | `dict` | Server session configured (contains session metadata) |
@@ -2037,6 +2076,41 @@ Send tool call result back to the model.
   - `result` (`str`): JSON string result of the tool invocation
 - **Returns:** `None`
 - **Raises:** `InvalidStateTransition` if not in CONNECTED state
+
+**`async cancel_response() -> None`**
+
+Cancel the current in-progress response (barge-in).
+
+Sends a `response.cancel` event to the server. The server will stop generating audio/text and emit `response.done` with status "cancelled".
+
+- **Returns:** `None`
+- **Raises:** `InvalidStateTransition` if not in CONNECTED state
+- **Audit Logging:** Logs `response.cancel_sent` event with `response_id` if available
+
+**`get_conversation_history() -> list[dict[str, str]]`**
+
+Get conversation history as a list of role/content dicts.
+
+Returns the automatically tracked conversation history including all completed user and assistant transcriptions.
+
+- **Returns:** List of dicts with `"role"` and `"content"` keys
+  ```python
+  [
+      {"role": "user", "content": "Hello"},
+      {"role": "assistant", "content": "Hi there!"},
+      {"role": "user", "content": "How are you?"}
+  ]
+  ```
+- **Note:** This is a synchronous method (no `await` needed)
+
+**`async clear_conversation() -> None`**
+
+Clear the in-memory conversation history.
+
+Resets the tracked conversation items list to empty. Useful for starting a fresh conversation or managing memory in long sessions.
+
+- **Returns:** `None`
+- **Audit Logging:** Logs `conversation.cleared` event with `items_cleared` count
 
 #### Usage Examples
 
@@ -2225,6 +2299,111 @@ async def main():
         # Or access events directly
         for event in session.audit_log.events:
             print(f"{event.timestamp}: {event.event_type}")
+
+asyncio.run(main())
+```
+
+**Response interruption (barge-in) and conversation history:**
+
+```python
+from openai_apis import RealtimeSession, RealtimeConfig
+
+async def main():
+    config = RealtimeConfig(
+        voice="sage",
+        language="hu",
+        instructions="You are a helpful assistant."
+    )
+
+    async with RealtimeSession(config) as session:
+        # Track conversation history automatically
+        def on_user_transcript(event):
+            print(f"User: {event.transcript}")
+
+        def on_assistant_transcript(event):
+            print(f"Assistant: {event.transcript}")
+
+        session.on("transcript.input", on_user_transcript)
+        session.on("transcript.output", on_assistant_transcript)
+
+        # Handle interruption detection (VAD auto-interrupt)
+        def on_interrupted(data):
+            print(f"⚠️ Response {data['response_id']} interrupted by user speech")
+            # Stop audio playback here
+            stop_audio_playback()
+
+        session.on("response.interrupted", on_interrupted)
+
+        # Send user audio
+        await session.send_audio(audio_chunk)
+        await session.commit_audio()
+        await session.create_response()
+
+        # Wait for response...
+        await asyncio.sleep(2)
+
+        # Manual cancellation (push-to-talk interruption)
+        if user_pressed_button():
+            await session.cancel_response()
+            print("✋ Response cancelled by user")
+
+        # Get conversation history at any time
+        history = session.get_conversation_history()
+        print("\n📜 Conversation history:")
+        for turn in history:
+            print(f"  {turn['role']}: {turn['content']}")
+
+        # Clear history for fresh conversation
+        await session.clear_conversation()
+        print("🗑️ History cleared")
+
+asyncio.run(main())
+```
+
+**VAD-based automatic interruption detection:**
+
+```python
+from openai_apis import RealtimeSession, RealtimeConfig, VADConfig
+
+async def main():
+    # Enable server VAD for automatic turn detection
+    config = RealtimeConfig(
+        voice="sage",
+        vad=VADConfig(mode="server_vad", threshold=0.7, silence_duration_ms=800)
+    )
+
+    async with RealtimeSession(config) as session:
+        # Detect when user starts speaking during assistant response
+        def on_speech_started(data):
+            print("🎤 User started speaking")
+
+        session.on("input_audio_buffer.speech_started", on_speech_started)
+
+        # Automatic interruption event (triggered by VAD)
+        def on_auto_interrupt(data):
+            response_id = data["response_id"]
+            trigger = data["trigger"]  # "vad_speech_started"
+            print(f"⚡ Auto-interrupted {response_id} via {trigger}")
+            # Server handles cancellation automatically - just stop playback
+            stop_audio_playback()
+
+        session.on("response.interrupted", on_auto_interrupt)
+
+        # Track response lifecycle
+        def on_response_created(data):
+            print(f"🚀 Response {data['id']} started")
+
+        def on_response_done(data):
+            status = data["status"]  # "completed" or "cancelled"
+            print(f"✅ Response {data['response_id']} finished: {status}")
+
+        session.on("response.created", on_response_created)
+        session.on("response.done", on_response_done)
+
+        # Normal conversation flow
+        await session.send_audio(audio_chunk)
+        await session.commit_audio()
+        await session.create_response()
 
 asyncio.run(main())
 ```
@@ -2787,6 +2966,7 @@ from openai_apis import (
     TranscriptDelta,
     TranscriptCompleted,
     ErrorEvent,
+    ConversationItem,    # Conversation history entry
 )
 
 # Submodule imports also supported
@@ -2801,6 +2981,7 @@ from openai_apis.realtime import (
     TranscriptDelta,
     TranscriptCompleted,
     ErrorEvent,
+    ConversationItem,    # Conversation history entry
 )
 
 # Event types can also be imported from the events module
@@ -2810,6 +2991,7 @@ from openai_apis.realtime.events import (
     TranscriptDelta,
     TranscriptCompleted,
     ErrorEvent,
+    ConversationItem,    # Conversation history entry
 )
 ```
 
