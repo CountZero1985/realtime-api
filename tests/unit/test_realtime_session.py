@@ -803,3 +803,81 @@ class TestRealtimeSessionAuditLog:
 
         event_types = [e.event_type for e in events]
         assert "websocket.disconnected" in event_types
+
+    @pytest.mark.asyncio
+    async def test_audio_output_multi_chunk_audit(self):
+        """Multiple audio.delta + audio.done logs chunk_count and total_bytes."""
+        chunk1 = b"\x00" * 4800  # 100ms of 24kHz mono PCM16
+        chunk2 = b"\x00" * 4800
+        b64_1 = base64.b64encode(chunk1).decode("ascii")
+        b64_2 = base64.b64encode(chunk2).decode("ascii")
+        messages = make_handshake_messages() + [
+            json.dumps({"type": "response.audio.delta", "delta": b64_1, "item_id": "item_1", "response_id": "resp_1"}),
+            json.dumps({"type": "response.audio.delta", "delta": b64_2, "item_id": "item_1", "response_id": "resp_1"}),
+            json.dumps({"type": "response.audio.done", "item_id": "item_1", "response_id": "resp_1"}),
+        ]
+        mock_ws = MockWebSocket(messages)
+
+        with patch("openai_apis.realtime.session.websockets.connect", side_effect=mock_websockets_connect(mock_ws)):
+            async with RealtimeSession() as session:
+                await asyncio.sleep(0.1)
+                events = session.audit_log.events
+
+        event_types = [e.event_type for e in events]
+        assert "audio.output_completed" in event_types
+        completed = [e for e in events if e.event_type == "audio.output_completed"][0]
+        assert completed.data["chunk_count"] == 2
+        assert completed.data["total_bytes"] == 9600
+        assert "audio_duration_s" in completed.data
+
+    @pytest.mark.asyncio
+    async def test_send_audio_chunk_count_audit(self):
+        """send_audio logs cumulative chunk count and total bytes."""
+        mock_ws = MockWebSocket(make_handshake_messages())
+
+        with patch("openai_apis.realtime.session.websockets.connect", side_effect=mock_websockets_connect(mock_ws)):
+            async with RealtimeSession() as session:
+                await session.send_audio(b"\x00" * 100)
+                await session.send_audio(b"\x00" * 200)
+                events = session.audit_log.events
+
+        chunk_events = [e for e in events if e.event_type == "audio.chunk_sent"]
+        assert len(chunk_events) == 2
+        assert chunk_events[0].data["total_chunks"] == 1
+        assert chunk_events[0].data["total_bytes"] == 100
+        assert chunk_events[1].data["total_chunks"] == 2
+        assert chunk_events[1].data["total_bytes"] == 300
+
+    @pytest.mark.asyncio
+    async def test_commit_audio_audit_duration(self):
+        """commit_audio logs audio_duration_s based on accumulated bytes."""
+        mock_ws = MockWebSocket(make_handshake_messages())
+
+        with patch("openai_apis.realtime.session.websockets.connect", side_effect=mock_websockets_connect(mock_ws)):
+            async with RealtimeSession() as session:
+                # 48000 bytes = 1 second of 24kHz mono PCM16 (24000 samples * 2 bytes)
+                await session.send_audio(b"\x00" * 48000)
+                await session.commit_audio()
+                events = session.audit_log.events
+
+        committed = [e for e in events if e.event_type == "audio.buffer_committed"][0]
+        assert committed.data["total_chunks"] == 1
+        assert committed.data["total_bytes"] == 48000
+        assert committed.data["audio_duration_s"] == 1.0
+
+    @pytest.mark.asyncio
+    async def test_commit_audio_resets_counters(self):
+        """Counters reset after commit for next push-to-talk turn."""
+        mock_ws = MockWebSocket(make_handshake_messages())
+
+        with patch("openai_apis.realtime.session.websockets.connect", side_effect=mock_websockets_connect(mock_ws)):
+            async with RealtimeSession() as session:
+                await session.send_audio(b"\x00" * 100)
+                await session.commit_audio()
+                await session.send_audio(b"\x00" * 200)
+                events = session.audit_log.events
+
+        chunk_events = [e for e in events if e.event_type == "audio.chunk_sent"]
+        # After reset, total_chunks should be 1 again
+        assert chunk_events[1].data["total_chunks"] == 1
+        assert chunk_events[1].data["total_bytes"] == 200
