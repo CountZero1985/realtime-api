@@ -44,6 +44,7 @@ except ImportError:
 from openai_apis._session import BaseSession, SessionState, InvalidStateTransition
 from openai_apis._logging import get_logger, set_correlation_id
 from openai_apis.realtime.config import RealtimeConfig
+from openai_apis.realtime.tools import ToolRegistry
 from openai_apis.realtime.events import (
     TranscriptDelta, TranscriptCompleted, ErrorEvent,
     AudioDelta, AudioDone,
@@ -127,6 +128,10 @@ class RealtimeSession(BaseSession):
         self._receive_task: Optional[asyncio.Task] = None
         self._max_reconnect_attempts = max_reconnect_attempts
         self._reconnect_delay = reconnect_delay
+        # Extract ToolRegistry if provided via config
+        self._tool_registry: Optional[ToolRegistry] = None
+        if isinstance(self._config.tools, ToolRegistry):
+            self._tool_registry = self._config.tools
         # Delta accumulator: maps item_id -> {"accumulated": str, "start_time": float}
         self._delta_accumulator: Dict[str, Dict[str, Any]] = {}
         # Audio output accumulator: maps item_id -> {"chunk_count": int, "total_bytes": int, "start_time": float}
@@ -309,6 +314,43 @@ class RealtimeSession(BaseSession):
         await self._send_event(event)
         self._audit_log.log("tool.result_sent", {"call_id": call_id})
 
+    async def _execute_tool(self, call_id: str, name: str, arguments: str) -> None:
+        """Execute a tool from the registry, send result, and trigger response.
+
+        Args:
+            call_id: The tool call ID.
+            name: The tool name.
+            arguments: JSON string of arguments.
+        """
+        self._audit_log.log("tool.execution.started", {
+            "call_id": call_id,
+            "name": name,
+            "arguments": arguments,
+        })
+        start_time = time.time()
+        try:
+            result = await self._tool_registry.execute(name, arguments)
+            duration_ms = (time.time() - start_time) * 1000
+            self._audit_log.log("tool.execution.completed", {
+                "call_id": call_id,
+                "name": name,
+                "result": result,
+            }, duration_ms=duration_ms)
+            await self.send_tool_result(call_id, result)
+            await self.create_response()
+        except Exception as e:
+            duration_ms = (time.time() - start_time) * 1000
+            self._audit_log.log("tool.execution.failed", {
+                "call_id": call_id,
+                "name": name,
+                "error": str(e),
+            }, duration_ms=duration_ms)
+            self._logger.error(f"Tool execution failed: {name}: {e}", exc_info=True)
+            # Send error result so the model knows the tool failed
+            error_result = json.dumps({"error": str(e)})
+            await self.send_tool_result(call_id, error_result)
+            await self.create_response()
+
     def _assert_connected(self, operation: str) -> None:
         """Verify session is in CONNECTED state.
 
@@ -462,11 +504,22 @@ class RealtimeSession(BaseSession):
 
         # Tool calls
         elif event_type == "response.function_call_arguments.done":
-            self._emit("tool.call", {
+            tool_data = {
                 "call_id": event.get("call_id", ""),
                 "name": event.get("name", ""),
                 "arguments": event.get("arguments", ""),
-            })
+            }
+            self._emit("tool.call", tool_data)
+
+            # Auto-execute if ToolRegistry is available
+            if self._tool_registry is not None:
+                asyncio.create_task(
+                    self._execute_tool(
+                        tool_data["call_id"],
+                        tool_data["name"],
+                        tool_data["arguments"],
+                    )
+                )
 
         # Response lifecycle
         elif event_type == "response.done":
