@@ -50,14 +50,14 @@ from openai_apis.tts import (
     get_provider,
 )
 
-# Realtime (M3) - Optional: requires audio dependencies
+# Realtime (M3)
+from openai_apis.realtime import (
+    RealtimeSession,
+    RealtimeVoiceAPI,
+    RealtimeConfig,
+    RealtimeAgentState,
+)
 from openai_apis.realtime.events import TranscriptDelta, TranscriptCompleted, ErrorEvent
-try:
-    from openai_apis.realtime import RealtimeVoiceAPI, RealtimeConfig, RealtimeAgentState
-except ImportError:
-    RealtimeVoiceAPI = None
-    RealtimeConfig = None
-    RealtimeAgentState = None
 
 __all__ = [
     # Infrastructure
@@ -90,6 +90,7 @@ __all__ = [
     "register_provider",
     "get_provider",
     # Realtime
+    "RealtimeSession",
     "RealtimeVoiceAPI",
     "RealtimeConfig",
     "RealtimeAgentState",

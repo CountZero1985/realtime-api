@@ -276,8 +276,15 @@ class TranscriptionAPI:
                 duration_ms=api_duration_ms
             )
 
-            # Extract text from response (always string format)
-            result_text = str(transcript) if not isinstance(transcript, str) else transcript
+            # Extract text from response
+            if isinstance(transcript, str):
+                result_text = transcript
+            elif hasattr(transcript, 'text'):
+                result_text = transcript.text
+            elif isinstance(transcript, dict):
+                result_text = transcript.get('text', '')
+            else:
+                result_text = str(transcript)
 
             duration_ms = (time.time() - start_time) * 1000
 

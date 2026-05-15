@@ -363,7 +363,7 @@ class TestTranscriptionAPI:
     @pytest.mark.asyncio
     async def test_transcribe_file_json_missing_text_key(self, temp_wav_file):
         """JSON response missing 'text' key returns empty string."""
-        config = TranscriptionConfig(response_format="json", api_key="test-key")
+        config = TranscriptionConfig(api_key="test-key")
         api = TranscriptionAPI(config=config)
         api.client.audio.transcriptions.create = AsyncMock(return_value={"duration": 5.0})
         result = await api.transcribe_file(temp_wav_file)

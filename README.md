@@ -224,66 +224,80 @@ Invalid values raise `ValueError` with clear error messages.
 ### Realtime Voice API
 
 ```python
-from openai_apis import RealtimeVoiceAPI, RealtimeConfig
+from openai_apis import RealtimeSession, RealtimeConfig
+import asyncio
 
-# Define callbacks
-def on_transcription(text):
-    print(f"User said: {text}")
+async def main():
+    # Configure session
+    config = RealtimeConfig(
+        voice="sage",
+        language="hu",
+        keywords=["OpenAI", "API", "transzkripció"],  # Domain-specific keywords
+        instructions="segíts a felhasználónak"
+    )
 
-def on_response_text(text):
-    print(f"Agent: {text}")
+    # Use async context manager
+    async with RealtimeSession(config) as session:
+        # Define callbacks
+        def on_transcript(data):
+            print(f"User said: {data.transcript}")
 
-# Configure and run
-config = RealtimeConfig(
-    voice="sage",
-    language="hu",
-    keywords=["OpenAI", "API", "transzkripció"],  # Domain-specific keywords
-    instructions="segíts a felhasználónak"
-)
+        def on_audio(chunk: bytes):
+            # Process audio bytes (e.g., play to speaker)
+            play_audio(chunk)
 
-api = RealtimeVoiceAPI(
-    config=config,
-    on_transcription=on_transcription,
-    on_response_text=on_response_text
-)
+        session.on("transcript.input", on_transcript)
+        session.on("audio.delta", on_audio)
 
-# Run session (blocking)
-api.run_session_sync()
+        # Send audio and trigger response
+        await session.send_audio(audio_chunk)
+        await session.commit_audio()
+        await session.create_response()
+
+asyncio.run(main())
 ```
 
 **Streaming transcript events with delta callbacks:**
 
 ```python
 from openai_apis import (
-    RealtimeVoiceAPI,
+    RealtimeSession,
     TranscriptDelta,
     TranscriptCompleted,
     ErrorEvent
 )
+import asyncio
 
-api = RealtimeVoiceAPI()
+async def main():
+    async with RealtimeSession() as session:
+        # Register callback for streaming transcript deltas (~200-500ms intervals)
+        def on_delta(event: TranscriptDelta):
+            print(f"\r[Streaming] {event.accumulated}", end="", flush=True)
 
-# Register callback for streaming transcript deltas (~200-500ms intervals)
-def on_delta(event: TranscriptDelta):
-    print(f"\r[Streaming] {event.accumulated}", end="", flush=True)
+        session.on("transcript.delta", on_delta)
 
-api.on("transcript.delta", on_delta)
+        # Register callback for completed transcripts
+        def on_completed(event: TranscriptCompleted):
+            print(f"\n[Final] {event.transcript} ({event.duration_ms:.0f}ms)")
 
-# Register callback for completed transcripts
-def on_completed(event: TranscriptCompleted):
-    print(f"\n[Final] {event.transcript} ({event.duration_ms:.0f}ms)")
+        session.on("transcript.input", on_completed)
+        session.on("transcript.output", on_completed)
 
-api.on("transcript.completed", on_completed)
+        # Register error handler
+        def on_error(event: ErrorEvent):
+            print(f"\n[Error {event.code}] {event.message}")
 
-# Register error handler
-def on_error(event: ErrorEvent):
-    print(f"\n[Error {event.code}] {event.message}")
+        session.on("error", on_error)
 
-api.on("error", on_error)
+        # Send audio and trigger response
+        await session.send_audio(audio_chunk)
+        await session.commit_audio()
+        await session.create_response()
 
-# Run session with streaming callbacks
-api.run_session_sync()
+asyncio.run(main())
 ```
+
+**Note:** `RealtimeVoiceAPI` is maintained as a backward-compatible alias for `RealtimeSession`.
 
 ### Session Lifecycle Management
 

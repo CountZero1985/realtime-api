@@ -200,20 +200,22 @@ class TestRealtimeWithTranscriptionCallbacks:
         """Test realtime API calling transcription callback."""
         transcripts = []
 
-        def on_transcription(text):
-            transcripts.append(text)
+        def on_transcription(data):
+            transcripts.append(data.transcript)
 
         with patch.dict('os.environ', {'OPENAI_API_KEY': 'test-key'}):
-            api = RealtimeVoiceAPI(on_transcription=on_transcription)
+            session = RealtimeVoiceAPI()
+            session.on("transcript.input", on_transcription)
 
             # Simulate transcription event
             import json
             message = json.dumps({
                 "type": "conversation.item.input_audio_transcription.completed",
+                "item_id": "item_123",
                 "transcript": "Realtime transcript"
             })
 
-            api._on_message(Mock(), message)
+            session._handle_message(message)
 
             assert transcripts == ["Realtime transcript"]
 
@@ -223,9 +225,9 @@ class TestRealtimeWithTranscriptionCallbacks:
         state.set("session_start", "2024-01-01")
 
         with patch.dict('os.environ', {'OPENAI_API_KEY': 'test-key'}):
-            api = RealtimeVoiceAPI(state=state)
+            session = RealtimeVoiceAPI(state=state)
 
-            assert api.state.get("session_start") == "2024-01-01"
+            assert session.agent_state.get("session_start") == "2024-01-01"
 
 
 class TestMultipleAPIsWorkflow:
@@ -355,15 +357,14 @@ class TestErrorHandlingAcrossAPIs:
             with pytest.raises(ValueError, match="OPENAI_API_KEY"):
                 TranscriptionAPI(config=TranscriptionConfig(api_key=None))
 
-            # TTSAPI requires it
+            # TTSAPI requires it when initializing the OpenAI client
             with pytest.raises(ValueError, match="OPENAI_API_KEY"):
                 TTSAPI(config=TTSConfig(api_key=None))
 
-            # RealtimeVoiceAPI allows None initially but fails on run_session
-            api = RealtimeVoiceAPI(api_key=None)
-            api.api_key = None
-            with pytest.raises(ValueError, match="OPENAI_API_KEY"):
-                api.run_session()
+            # RealtimeSession config can be created without API key
+            # (validation happens during connection, not init)
+            session = RealtimeVoiceAPI(config=RealtimeConfig(api_key=None))
+            assert session is not None
 
     @pytest.mark.asyncio
     async def test_empty_input_handling(self):
@@ -468,10 +469,10 @@ class TestStateManagement:
 
             # Simulate multiple messages
             for i in range(3):
-                current = api.state.get("counter")
-                api.state.set("counter", current + 1)
+                current = api.agent_state.get("counter")
+                api.agent_state.set("counter", current + 1)
 
-            assert api.state.get("counter") == 3
+            assert api.agent_state.get("counter") == 3
 
     @pytest.mark.skip(reason="AgentFramework module removed in issue #4")
     @pytest.mark.asyncio

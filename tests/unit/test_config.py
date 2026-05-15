@@ -152,7 +152,7 @@ class TestBaseConfig:
         assert config.api_key == "sk-explicit-key"
 
     def test_api_key_none_when_no_env(self, monkeypatch):
-        """api_key stays None when env var not set."""
+        """Config can be created with api_key=None when env var not set."""
         monkeypatch.delenv("OPENAI_API_KEY", raising=False)
         config = BaseConfig()
         assert config.api_key is None

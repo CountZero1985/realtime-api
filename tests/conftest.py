@@ -1,11 +1,18 @@
 """Shared pytest fixtures for all tests."""
 
 import pytest
-from unittest.mock import AsyncMock, MagicMock
+import os
+from unittest.mock import AsyncMock, MagicMock, patch
 try:
     from agents import Agent
 except ImportError:
     Agent = None
+
+
+@pytest.fixture(autouse=True)
+def mock_api_key(monkeypatch):
+    """Automatically set OPENAI_API_KEY for all tests."""
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key-12345")
 
 @pytest.fixture
 def mock_openai_client():
