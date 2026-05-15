@@ -8,7 +8,8 @@ import websockets
 from unittest.mock import AsyncMock, MagicMock, patch, PropertyMock, call
 from openai_apis.transcription.ws_session import TranscriptionSession
 from openai_apis.transcription.config import TranscriptionConfig
-from openai_apis import SessionState, InvalidStateTransition, SessionAuditLog, VADConfig
+from openai_apis import SessionState, SessionAuditLog, VADConfig
+from openai_apis._session import InvalidStateTransition
 
 
 class MockWebSocket:

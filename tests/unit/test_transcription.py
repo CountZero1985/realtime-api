@@ -648,9 +648,9 @@ class TestTranscriptionImports:
         assert TranscriptionConfig is not None
 
     def test_import_from_top_level_package(self):
-        """Importing from openai_apis works."""
-        from openai_apis import TranscriptionAPI, TranscriptionConfig
-        assert TranscriptionAPI is not None
+        """Importing from openai_apis works (using new public API)."""
+        from openai_apis import TranscriptionSession, TranscriptionConfig
+        assert TranscriptionSession is not None
         assert TranscriptionConfig is not None
 
 

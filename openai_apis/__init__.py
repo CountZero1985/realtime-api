@@ -1,121 +1,59 @@
 """
 OpenAI APIs - Unified interface for OpenAI voice/text services.
 
-This package supports modular installation via optional extras:
+Quick start examples::
 
-- Core dependencies: openai, websockets, python-dotenv
-- Optional extras:
-  - [audio]: Adds sounddevice, numpy, websocket-client for transcription/TTS/realtime
-  - [web]: Adds fastapi, uvicorn, python-multipart, aiofiles for web features
-  - [agents]: Adds openai-agents for agent orchestration
-  - [dev]: Adds pytest, pytest-asyncio, pytest-cov, httpx for testing
-  - [all]: Installs all optional dependencies
+    # Realtime transcription
+    async with TranscriptionSession(TranscriptionConfig(language="hu")) as session:
+        session.on("transcript.delta", print)
+        await session.send_audio(chunk)
 
-Install with: pip install openai-apis[audio] or uv sync --extra audio
+    # Realtime voice
+    async with RealtimeSession(RealtimeConfig(voice="ash")) as session:
+        session.on("audio.delta", play_audio)
+        await session.send_audio(chunk)
 
-Note: Some imports (e.g., RealtimeVoiceAPI) may be None if optional dependencies
-are not installed. Features that require optional dependencies will raise helpful
-ImportError messages if used without the required packages.
+    # TTS
+    tts = TTSRegistry.create(TTSConfig(voice="sage"))
+    audio = await tts.synthesize("Szia!")
 """
 
 __version__ = "0.1.0"
 
-# Shared infrastructure
-from openai_apis._logging import (
-    get_logger,
-    set_correlation_id,
-    log_audit_event,
-    log_performance,
-    log_api_call,
-    setup_logging,
-    SessionAuditLog,
-    AuditEvent,
-)
-from openai_apis._session import BaseSession, SessionState, InvalidStateTransition
-from openai_apis._config import BaseConfig, AudioFormat, VADConfig
+# Core sessions
+from openai_apis.transcription import TranscriptionSession, TranscriptionConfig
+from openai_apis.realtime import RealtimeSession, RealtimeConfig
+from openai_apis.tts import TTSProvider, TTSConfig, TTSRegistry
 
-# Transcription (M2)
-from openai_apis.transcription import TranscriptionAPI, TranscriptionConfig, TranscriptionSession
+# Shared config
+from openai_apis._config import AudioFormat, VADConfig
 
-# TTS (M1)
-from openai_apis.tts import (
-    TTSAPI,
-    TTSConfig,
-    OpenAITTSProvider,
-    ElevenLabsTTSProvider,
-    BaseTTSProvider,
-    TTSSynthesisError,
-    TTSRegistry,
-    register_provider,
-    get_provider,
-)
+# Tools & plugins
+from openai_apis.realtime.tools import ToolRegistry
+from openai_apis.mcp import MCPPlugin, MCPPluginManager
 
-# Realtime (M3)
-from openai_apis.realtime import (
-    RealtimeSession,
-    RealtimeVoiceAPI,
-    RealtimeConfig,
-    RealtimeAgentState,
-    ToolRegistry,
-)
-from openai_apis.realtime.events import (
-    TranscriptDelta, TranscriptCompleted, ErrorEvent,
-    AudioDelta, AudioDone, ConversationItem,
-)
-
-# MCP (M4)
-from openai_apis.mcp import (
-    MCPPlugin,
-    MCPPluginManager,
-    FileSystemPlugin,
-    GmailPlugin,
-)
+# Session base (advanced usage)
+from openai_apis._session import BaseSession, SessionState
+from openai_apis._logging import SessionAuditLog
 
 __all__ = [
-    # Infrastructure
-    "BaseSession",
-    "SessionState",
-    "InvalidStateTransition",
-    "BaseConfig",
+    # Core sessions
+    "TranscriptionSession",
+    "TranscriptionConfig",
+    "RealtimeSession",
+    "RealtimeConfig",
+    "TTSProvider",
+    "TTSConfig",
+    "TTSRegistry",
+    # Shared config
     "AudioFormat",
     "VADConfig",
-    "get_logger",
-    "set_correlation_id",
-    "log_audit_event",
-    "log_performance",
-    "log_api_call",
-    "setup_logging",
-    "SessionAuditLog",
-    "AuditEvent",
-    # Transcription
-    "TranscriptionAPI",
-    "TranscriptionConfig",
-    "TranscriptionSession",
-    # TTS
-    "TTSAPI",
-    "TTSConfig",
-    "OpenAITTSProvider",
-    "ElevenLabsTTSProvider",
-    "BaseTTSProvider",
-    "TTSSynthesisError",
-    "TTSRegistry",
-    "register_provider",
-    "get_provider",
-    # Realtime
-    "RealtimeSession",
-    "RealtimeVoiceAPI",
-    "RealtimeConfig",
-    "RealtimeAgentState",
+    # Tools & plugins
     "ToolRegistry",
-    "TranscriptDelta",
-    "TranscriptCompleted",
-    "ErrorEvent",
-    "AudioDelta",
-    "AudioDone",
-    "ConversationItem",
-    # MCP
     "MCPPlugin",
     "MCPPluginManager",
-    "FileSystemPlugin",
-    "GmailPlugin",
+    # Session base (advanced usage)
+    "BaseSession",
+    "SessionState",
+    "SessionAuditLog",
 ]
