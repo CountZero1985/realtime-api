@@ -27,6 +27,11 @@ Complete API reference for the `openai_apis` Python package, covering transcript
   - [ToolRegistry](#toolregistry)
   - [RealtimeAgentState](#realtimeagentstate)
   - [RealtimeSession](#realtimesession)
+- [MCP Plugin System](#mcp-plugin-system)
+  - [MCPPlugin](#mcpplugin)
+  - [MCPPluginManager](#mcppluginmanager)
+  - [FileSystemPlugin](#filesystemplugin)
+  - [GmailPlugin](#gmailplugin)
 - [Session Infrastructure](#session-infrastructure)
   - [SessionState](#sessionstate)
   - [InvalidStateTransition](#invalidstatetransition)
@@ -41,11 +46,12 @@ Complete API reference for the `openai_apis` Python package, covering transcript
 
 ## Overview
 
-The `openai_apis` package provides a unified Python interface for OpenAI's voice and text services, with three core API modules:
+The `openai_apis` package provides a unified Python interface for OpenAI's voice and text services, with three core API modules and an extensible plugin system:
 
 - **Transcription API** - Speech-to-text using Whisper models
 - **TTS API** - Text-to-speech synthesis with multiple voices
 - **Realtime Voice API** - Low-latency WebSocket-based voice interaction
+- **MCP Plugin System** - Model Context Protocol plugin architecture for extensible tool integration
 
 All modules share common infrastructure for configuration, session management, audio format handling, and audit logging.
 
@@ -2404,6 +2410,320 @@ async def main():
         await session.send_audio(audio_chunk)
         await session.commit_audio()
         await session.create_response()
+
+asyncio.run(main())
+```
+
+---
+
+## MCP Plugin System
+
+Model Context Protocol (MCP) plugin architecture for extensible tool integration. The MCP system provides an abstract plugin interface, a plugin manager for registration and dispatch, and stub implementations for filesystem and Gmail operations.
+
+### MCPPlugin
+
+Abstract base class for MCP plugins. Subclasses define plugin metadata, tool definitions, and execution logic.
+
+**Import:** `from openai_apis import MCPPlugin`
+
+**Abstract Members:**
+
+- `name` (property) - Unique plugin identifier (e.g., "filesystem", "gmail")
+- `description` (property) - Human-readable plugin description
+- `get_tools()` - Returns list of tool definitions in OpenAI function-calling JSON Schema format
+- `execute_tool(name, arguments)` - Async method that executes a named tool with given arguments
+
+**Tool Definition Format:**
+
+Each tool definition is a dict with the following structure:
+
+```python
+{
+    "type": "function",
+    "name": "tool_name",
+    "description": "Tool description",
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "param1": {"type": "string", "description": "Parameter description"},
+            # ... more parameters
+        },
+        "required": ["param1"]
+    }
+}
+```
+
+**Example Implementation:**
+
+```python
+from openai_apis import MCPPlugin
+
+class CustomPlugin(MCPPlugin):
+    @property
+    def name(self) -> str:
+        return "custom"
+
+    @property
+    def description(self) -> str:
+        return "Custom plugin for demonstration"
+
+    def get_tools(self) -> list[dict]:
+        return [
+            {
+                "type": "function",
+                "name": "custom_action",
+                "description": "Performs a custom action",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "text": {
+                            "type": "string",
+                            "description": "Input text to process"
+                        }
+                    },
+                    "required": ["text"]
+                }
+            }
+        ]
+
+    async def execute_tool(self, name: str, arguments: dict) -> str:
+        if name == "custom_action":
+            text = arguments["text"]
+            return f"Processed: {text.upper()}"
+        raise ValueError(f"Unknown tool: {name}")
+```
+
+### MCPPluginManager
+
+Plugin registry and dispatcher for managing MCP plugins, aggregating tools, and routing tool execution.
+
+**Import:** `from openai_apis import MCPPluginManager`
+
+**Methods:**
+
+#### `__init__()`
+
+Initialize an empty plugin manager.
+
+```python
+manager = MCPPluginManager()
+```
+
+#### `register(plugin: MCPPlugin) -> None`
+
+Register an MCP plugin.
+
+**Raises:**
+- `TypeError` - If plugin is not an MCPPlugin instance
+- `ValueError` - If plugin name is already registered or any tool name collides with existing tools
+
+**Example:**
+
+```python
+from openai_apis import MCPPluginManager, FileSystemPlugin, GmailPlugin
+
+manager = MCPPluginManager()
+manager.register(FileSystemPlugin())
+manager.register(GmailPlugin())
+```
+
+#### `get_all_tools() -> list[dict]`
+
+Aggregate tool definitions from all registered plugins.
+
+**Returns:** List of tool definition dicts in OpenAI function-calling format.
+
+**Example:**
+
+```python
+tools = manager.get_all_tools()
+for tool in tools:
+    print(f"{tool['name']}: {tool['description']}")
+```
+
+#### `async execute(tool_name: str, arguments: dict) -> str`
+
+Dispatch tool execution to the appropriate plugin.
+
+**Parameters:**
+- `tool_name` - Name of the tool to execute
+- `arguments` - Dict of tool arguments matching the tool's parameters schema
+
+**Returns:** String result from the tool execution.
+
+**Raises:**
+- `KeyError` - If tool_name is not registered
+
+**Example:**
+
+```python
+result = await manager.execute("read_file", {"path": "/tmp/data.txt"})
+print(result)
+```
+
+#### `populate_tool_registry(registry: ToolRegistry) -> None`
+
+Register all MCP plugin tools into a ToolRegistry for Realtime API integration.
+
+This method bridges MCP plugins into the Realtime API's `ToolRegistry` so MCP tools appear as regular function-calling tools. The ToolRegistry handles JSON serialization and deserialization automatically.
+
+**Parameters:**
+- `registry` - ToolRegistry instance to populate
+
+**Example:**
+
+```python
+from openai_apis import MCPPluginManager, ToolRegistry, FileSystemPlugin
+
+# Create manager and register plugins
+manager = MCPPluginManager()
+manager.register(FileSystemPlugin())
+
+# Bridge to ToolRegistry
+registry = ToolRegistry()
+manager.populate_tool_registry(registry)
+
+# Now MCP tools are available in the registry
+print(registry.tool_names)  # ['read_file', 'write_file']
+```
+
+**Properties:**
+
+- `plugin_names` - List of registered plugin names (sorted)
+- `__len__()` - Number of registered plugins
+- `__bool__()` - True if any plugins are registered
+
+**Full Example:**
+
+```python
+import asyncio
+from openai_apis import MCPPluginManager, FileSystemPlugin, GmailPlugin
+
+async def main():
+    # Initialize manager
+    manager = MCPPluginManager()
+
+    # Register plugins
+    manager.register(FileSystemPlugin())
+    manager.register(GmailPlugin())
+
+    # Inspect registered plugins
+    print(f"Registered plugins: {manager.plugin_names}")
+    print(f"Plugin count: {len(manager)}")
+    print(f"Has plugins: {bool(manager)}")
+
+    # Get all tools
+    tools = manager.get_all_tools()
+    print(f"Available tools: {[t['name'] for t in tools]}")
+
+    # Execute a tool (will raise NotImplementedError for stubs)
+    try:
+        result = await manager.execute("read_file", {"path": "/tmp/test.txt"})
+        print(result)
+    except NotImplementedError as e:
+        print(f"Tool not implemented: {e}")
+
+asyncio.run(main())
+```
+
+### FileSystemPlugin
+
+Stub MCP plugin for file system operations. Provides tool definitions but raises `NotImplementedError` on execution (placeholder for future implementation).
+
+**Import:** `from openai_apis import FileSystemPlugin`
+
+**Plugin Name:** `"filesystem"`
+
+**Tools:**
+- `read_file(path: str)` - Read contents of a file
+- `write_file(path: str, content: str)` - Write contents to a file
+
+**Example:**
+
+```python
+from openai_apis import MCPPluginManager, FileSystemPlugin
+
+manager = MCPPluginManager()
+manager.register(FileSystemPlugin())
+
+# Get tool definitions
+tools = manager.get_all_tools()
+print([t['name'] for t in tools])  # ['read_file', 'write_file']
+
+# Execution raises NotImplementedError
+try:
+    result = await manager.execute("read_file", {"path": "/tmp/data.txt"})
+except NotImplementedError as e:
+    print(f"Not implemented: {e}")
+```
+
+### GmailPlugin
+
+Stub MCP plugin for Gmail operations. Provides tool definitions but raises `NotImplementedError` on execution (placeholder for future implementation).
+
+**Import:** `from openai_apis import GmailPlugin`
+
+**Plugin Name:** `"gmail"`
+
+**Tools:**
+- `send_email(to: str, subject: str, body: str)` - Send an email via Gmail
+- `read_emails(max_results: int = None)` - Read recent emails from Gmail inbox
+
+**Example:**
+
+```python
+from openai_apis import MCPPluginManager, GmailPlugin
+
+manager = MCPPluginManager()
+manager.register(GmailPlugin())
+
+# Get tool definitions
+tools = manager.get_all_tools()
+print([t['name'] for t in tools])  # ['send_email', 'read_emails']
+
+# Execution raises NotImplementedError
+try:
+    result = await manager.execute("send_email", {
+        "to": "user@example.com",
+        "subject": "Test",
+        "body": "Hello"
+    })
+except NotImplementedError as e:
+    print(f"Not implemented: {e}")
+```
+
+**Integration with Realtime API:**
+
+```python
+import asyncio
+from openai_apis import (
+    MCPPluginManager,
+    FileSystemPlugin,
+    GmailPlugin,
+    ToolRegistry,
+    RealtimeSession,
+    RealtimeConfig
+)
+
+async def main():
+    # Create MCP plugin manager and register plugins
+    mcp_manager = MCPPluginManager()
+    mcp_manager.register(FileSystemPlugin())
+    mcp_manager.register(GmailPlugin())
+
+    # Create ToolRegistry and populate with MCP tools
+    registry = ToolRegistry()
+    mcp_manager.populate_tool_registry(registry)
+
+    # Create Realtime session with MCP tools
+    config = RealtimeConfig(tools=registry)
+
+    async with RealtimeSession(config=config) as session:
+        # MCP tools are now available to the Realtime API
+        print(f"Available tools: {registry.tool_names}")
+
+        # Session will automatically execute MCP tools when called by the model
+        # (Note: stub plugins will raise NotImplementedError)
 
 asyncio.run(main())
 ```

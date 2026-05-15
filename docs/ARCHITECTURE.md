@@ -32,15 +32,17 @@ The `openai_apis` package is a production-ready real-time voice agent system int
 - **Session lifecycle management** with state machines
 - **Comprehensive audit logging** for compliance and debugging
 - **Provider-based extensibility** for future integrations
+- **MCP plugin system** for extensible tool integration with abstract plugin interface
 
 ### Design Principles
 
-1. **Modularity**: Each API module (Transcription, TTS, Realtime) is independent and can be used standalone
+1. **Modularity**: Each API module (Transcription, TTS, Realtime, MCP) is independent and can be used standalone
 2. **Stateless APIs**: Transcription and TTS are stateless endpoints with no conversation history
 3. **Async-first**: All APIs support async/await with optional sync wrappers
 4. **Configuration inheritance**: Shared `BaseConfig` ensures consistent API key and timeout handling
 5. **Lifecycle management**: `BaseSession` abstract class provides consistent session lifecycle with state machines
 6. **Audit trail**: Per-session and global audit logging for compliance and debugging
+7. **Extensibility**: Abstract base classes (MCPPlugin, BaseTTSProvider) enable custom implementations without modifying core code
 
 ---
 
@@ -76,12 +78,21 @@ openai_apis/
 │   ├── elevenlabs_provider.py # ElevenLabsTTSProvider (stub implementation)
 │   └── _registry.py        # TTSRegistry class and provider registry
 │
-└── realtime/               # Realtime voice API (M3)
+├── realtime/               # Realtime voice API (M3)
+│   ├── __init__.py         # Public exports
+│   ├── config.py           # RealtimeConfig (extends BaseConfig)
+│   ├── session.py          # RealtimeSession (WebSocket realtime)
+│   ├── tools.py            # ToolRegistry (tool/function calling registry)
+│   └── events.py           # Event types (AudioDelta, TranscriptDelta, etc.)
+│
+└── mcp/                    # Model Context Protocol plugin system (M4)
     ├── __init__.py         # Public exports
-    ├── config.py           # RealtimeConfig (extends BaseConfig)
-    ├── session.py          # RealtimeSession (WebSocket realtime)
-    ├── tools.py            # ToolRegistry (tool/function calling registry)
-    └── events.py           # Event types (AudioDelta, TranscriptDelta, etc.)
+    ├── base.py             # MCPPlugin (abstract base class)
+    ├── manager.py          # MCPPluginManager (plugin registry & dispatcher)
+    └── plugins/            # Plugin stub implementations
+        ├── __init__.py     # Plugin exports
+        ├── filesystem.py   # FileSystemPlugin (read_file, write_file stubs)
+        └── gmail.py        # GmailPlugin (send_email, read_emails stubs)
 
 examples/                   # Standalone example applications
 ├── agents/                 # Agent configurations for examples
@@ -280,6 +291,90 @@ api.run_session_sync()
 ```
 
 No cross-dependencies between API modules. All share only the infrastructure layer (`_config.py`, `_session.py`, `_logging.py`).
+
+### MCP Plugin System
+
+The MCP (Model Context Protocol) plugin system provides extensible tool integration through an abstract plugin interface and manager:
+
+```
+┌──────────────────┐
+│   MCPPlugin      │ ← Abstract base class
+│ (ABC)            │   - name (property)
+│ - get_tools()    │   - description (property)
+│ - execute_tool() │   - get_tools() -> list[dict]
+└──────────────────┘   - execute_tool(name, args) -> str
+         ▲
+         │ extends
+         │
+    ┌────┴────────────────┐
+    │                     │
+┌───▼──────────┐   ┌──────▼────────┐
+│ FileSystem   │   │ Gmail         │
+│ Plugin       │   │ Plugin        │
+│ (stub)       │   │ (stub)        │
+└──────────────┘   └───────────────┘
+         │                 │
+         └────────┬────────┘
+                  │
+                  ▼
+         ┌─────────────────┐
+         │ MCPPluginManager│
+         │ - register()    │
+         │ - execute()     │
+         │ - get_all_tools()│
+         │ - populate_     │
+         │   tool_registry()│
+         └─────────────────┘
+                  │
+                  │ bridges to
+                  ▼
+         ┌─────────────────┐
+         │  ToolRegistry   │ ← Realtime API tool system
+         │  (Realtime API) │
+         └─────────────────┘
+```
+
+**MCP Plugin Architecture:**
+
+1. **MCPPlugin ABC**: Abstract base class defining the plugin contract (name, description, get_tools, execute_tool)
+2. **Plugin Implementations**: Concrete plugins (FileSystemPlugin, GmailPlugin) implement the abstract interface
+3. **MCPPluginManager**: Registry and dispatcher for plugins with tool name collision detection
+4. **ToolRegistry Bridge**: `populate_tool_registry()` method integrates MCP tools into the Realtime API's ToolRegistry
+
+**Example Usage:**
+
+```python
+from openai_apis import (
+    MCPPluginManager,
+    FileSystemPlugin,
+    GmailPlugin,
+    ToolRegistry,
+    RealtimeSession,
+    RealtimeConfig
+)
+
+# Register MCP plugins
+mcp_manager = MCPPluginManager()
+mcp_manager.register(FileSystemPlugin())
+mcp_manager.register(GmailPlugin())
+
+# Bridge to ToolRegistry
+registry = ToolRegistry()
+mcp_manager.populate_tool_registry(registry)
+
+# Use in Realtime API
+config = RealtimeConfig(tools=registry)
+async with RealtimeSession(config=config) as session:
+    # MCP tools now available to the model
+    pass
+```
+
+**Design Patterns:**
+
+- **Abstract Base Class**: `MCPPlugin` follows the same ABC pattern as `BaseTTSProvider`
+- **Stub Implementation**: `FileSystemPlugin` and `GmailPlugin` follow the same stub pattern as `ElevenLabsTTSProvider` (raise `NotImplementedError`)
+- **Manager Registry**: `MCPPluginManager` follows similar pattern to `TTSRegistry` for registration and dispatch
+- **Bridge Pattern**: `populate_tool_registry()` bridges MCP tools into the existing ToolRegistry system
 
 ---
 

@@ -63,6 +63,14 @@ from openai_apis.realtime.events import (
     AudioDelta, AudioDone, ConversationItem,
 )
 
+# MCP (M4)
+from openai_apis.mcp import (
+    MCPPlugin,
+    MCPPluginManager,
+    FileSystemPlugin,
+    GmailPlugin,
+)
+
 __all__ = [
     # Infrastructure
     "BaseSession",
@@ -105,4 +113,9 @@ __all__ = [
     "AudioDelta",
     "AudioDone",
     "ConversationItem",
+    # MCP
+    "MCPPlugin",
+    "MCPPluginManager",
+    "FileSystemPlugin",
+    "GmailPlugin",
 ]
