@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Multi-mode Interactive CLI Application** - Transformed `examples/cli_app.py` into a unified CLI demonstrating all three core `openai_apis` modules (issue #34):
+  - **Three operating modes**: `transcription`, `voice`, and `tts` modes for different interaction patterns
+  - **Transcription mode**: Push-to-talk microphone → TranscriptionSession → real-time text output with delta and completed transcript events
+  - **Voice mode**: Push-to-talk microphone → RealtimeSession → AI voice response with real-time audio playback and transcript display
+  - **TTS mode**: Text input → TTSProvider via TTSRegistry → audio output with streaming playback
+  - **argparse CLI interface**: Command-line arguments for mode selection (`python examples/cli_app.py <mode>`), language configuration (`--language`/`-l`), and voice selection (`--voice`/`-v`)
+  - **Push-to-talk interaction**: All audio modes use `record_audio()` with Enter-to-record, 'q'-to-quit pattern
+  - **Graceful shutdown**: Ctrl+C handling with clean exit messages in all modes
+  - **Per-session audit logging**: Automatic export of session audit logs to `logs/audit_<mode>_<timestamp>.json` files on exit (transcription and voice modes)
+  - **Backward compatibility**: Legacy CLI classes (`CLI`, `CLIConfig`, `ConversationHistory`) preserved in same file for `examples/cli_agent.py` compatibility
+  - **Event-driven callbacks**: Uses typed event objects (`AudioDelta`, `AudioDone`, `TranscriptCompleted`) for real-time response handling
+  - **Usage examples**: `python examples/cli_app.py transcription --language hu`, `python examples/cli_app.py voice --voice ash`, `python examples/cli_app.py tts --voice sage`
+  - Demonstrates recommended async patterns for all three core APIs with comprehensive error handling
+
 ### Changed
 
 - **Public API Cleanup** - Simplified `openai_apis/__init__.py` to export minimal, clean public API surface (issue #33):

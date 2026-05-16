@@ -107,10 +107,12 @@ examples/                   # Standalone example applications
 │   ├── audio_io.py         # Audio recording and playback (24kHz)
 │   └── time_format.py      # Hungarian time formatting
 │
-├── cli_app.py              # CLI interface module
-│                           # - CLI (text-based interface)
-│                           # - CLIConfig (CLI configuration)
-│                           # - ConversationHistory (history management)
+├── cli_app.py              # Multi-mode interactive CLI application
+│                           # - Multi-mode CLI (transcription/voice/tts modes)
+│                           # - Legacy CLI classes (backward compatibility):
+│                           #   - CLI (text-based interface)
+│                           #   - CLIConfig (CLI configuration)
+│                           #   - ConversationHistory (history management)
 │
 ├── voice_pipeline.py       # Voice pipeline framework
 │                           # - AgentFrameworkAPI (high-level voice API)
@@ -925,7 +927,7 @@ examples/
 ├── utils/                 # Utility modules
 │   ├── audio_io.py        # Audio I/O utilities
 │   └── time_format.py     # Time formatting
-├── cli_app.py             # CLI interface module
+├── cli_app.py             # Multi-mode CLI + legacy CLI classes
 ├── voice_pipeline.py      # Voice pipeline framework
 ├── cli_agent.py           # Example: text agent
 ├── voice_agent.py         # Example: voice agent
@@ -936,6 +938,7 @@ examples/
 
 | Script | Purpose | Uses |
 |--------|---------|------|
+| `cli_app.py` | Multi-mode interactive CLI | `TranscriptionSession`, `RealtimeSession`, `TTSRegistry` |
 | `cli_agent.py` | Text-based agent | `CLI`, `assisstant_agent` |
 | `voice_agent.py` | Voice-based agent | `AgentFrameworkAPI`, `VoicePipeline` |
 | `realtime_websocket.py` | Realtime WebSocket | `RealtimeVoiceAPI` |
@@ -956,6 +959,12 @@ from examples.agents.team import assisstant_agent
 Run from project root:
 
 ```bash
+# Multi-mode CLI (demonstrates all three core APIs)
+python examples/cli_app.py transcription --language hu
+python examples/cli_app.py voice --language hu --voice ash
+python examples/cli_app.py tts --language hu --voice sage
+
+# Other examples
 python examples/cli_agent.py
 python examples/voice_agent.py
 python examples/realtime_websocket.py
