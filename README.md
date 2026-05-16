@@ -38,6 +38,8 @@ uv sync --extra audio          # With audio
 uv sync --extra all            # All features
 ```
 
+For running the examples, install with `[audio]` or `[all]`.
+
 | Extra    | Adds                                      | Use case                          |
 |----------|-------------------------------------------|-----------------------------------|
 | `audio`  | sounddevice, numpy, websocket-client      | Transcription, TTS, Realtime      |
@@ -157,6 +159,21 @@ See [docs/API.md](docs/API.md) for full configuration reference.
 
 The `examples/` directory contains standalone applications:
 
+**Multi-mode Interactive CLI (Recommended):**
+```bash
+# Transcription mode: microphone → real-time text
+python examples/cli_app.py transcription --language hu
+
+# Voice mode: microphone → AI voice response
+python examples/cli_app.py voice --language hu --voice ash
+
+# TTS mode: text input → audio output
+python examples/cli_app.py tts --language hu --voice sage
+```
+Unified CLI application demonstrating all three core APIs (TranscriptionSession, RealtimeSession, TTSProvider) with push-to-talk interaction and per-session audit logging.
+
+**Other Examples:**
+```bash
 python examples/cli_agent.py          # Text-based CLI agent
 python examples/voice_agent.py        # Push-to-talk voice agent
 python examples/realtime_websocket.py # Realtime WebSocket API

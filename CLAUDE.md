@@ -16,9 +16,12 @@ pytest tests/unit/ -v                # Unit tests only
 pytest tests/integration/ -v         # Integration tests (E2E flows)
 
 # Run example scripts
-python examples/cli_agent.py         # Text-based agent (CLI)
-python examples/voice_agent.py       # Push-to-talk voice agent (RealtimeSession)
-python examples/realtime_websocket.py # WebSocket realtime API
+python examples/cli_app.py transcription  # Multi-mode CLI: transcription mode
+python examples/cli_app.py voice          # Multi-mode CLI: voice mode
+python examples/cli_app.py tts            # Multi-mode CLI: TTS mode
+python examples/cli_agent.py              # Text-based agent (CLI)
+python examples/voice_agent.py            # Push-to-talk voice agent (RealtimeSession)
+python examples/realtime_websocket.py     # WebSocket realtime API
 ```
 
 ## Package Structure
@@ -51,7 +54,7 @@ examples/               # Standalone example applications
 ├── utils/              # Utility modules
 │   ├── audio_io.py     # Audio recording and playback
 │   └── time_format.py  # Hungarian time formatting
-├── cli_app.py          # CLI interface module
+├── cli_app.py          # Multi-mode CLI + legacy CLI classes
 ├── voice_pipeline.py   # Voice pipeline framework
 ├── cli_agent.py        # Example: text-based agent
 ├── voice_agent.py      # Example: voice-based agent
@@ -114,6 +117,16 @@ The `examples/` directory contains standalone runnable examples demonstrating di
 
 ### Example Scripts
 
+**`examples/cli_app.py`** - Multi-mode interactive CLI (RECOMMENDED)
+- **Transcription mode**: Microphone → TranscriptionSession → real-time text output
+- **Voice mode**: Microphone → RealtimeSession → AI voice response with audio playback
+- **TTS mode**: Text input → TTSProvider → audio output
+- Demonstrates all three core `openai_apis` modules (TranscriptionSession, RealtimeSession, TTSRegistry)
+- Push-to-talk interaction with Enter-to-record, 'q'-to-quit pattern
+- Per-session audit logging with automatic export to `logs/audit_<mode>_<timestamp>.json`
+- Command-line arguments: `python examples/cli_app.py <mode> --language <lang> --voice <voice>`
+- Also contains legacy CLI classes (CLI, CLIConfig, ConversationHistory) for backward compatibility
+
 **`examples/cli_agent.py`** - Text-based CLI agent
 - Interactive text-based conversation with agent
 - Uses `examples.cli_app.CLI` for interface
@@ -137,10 +150,13 @@ The `examples/` directory contains standalone runnable examples demonstrating di
 
 ### Example Modules
 
-**`examples/cli_app.py`** - CLI interface module
-- `CLI`: Main text-based interface class
-- `CLIConfig`: Configuration for CLI behavior
-- `ConversationHistory`: History management
+**`examples/cli_app.py`** - Multi-mode CLI application + legacy CLI classes
+- **Multi-mode functions**: `run_transcription_mode()`, `run_voice_mode()`, `run_tts_mode()`
+- **Legacy classes** (for backward compatibility):
+  - `CLI`: Main text-based interface class
+  - `CLIConfig`: Configuration for CLI behavior
+  - `ConversationHistory`: History management
+- Uses typed event objects (AudioDelta, AudioDone, TranscriptCompleted)
 - Streaming response support
 
 **`examples/voice_pipeline.py`** - Voice pipeline framework
@@ -173,6 +189,12 @@ from examples.agents.team import assisstant_agent
 
 Run from project root:
 ```bash
+# Multi-mode CLI (demonstrates all three core APIs)
+python examples/cli_app.py transcription --language hu
+python examples/cli_app.py voice --language hu --voice ash
+python examples/cli_app.py tts --language hu --voice sage
+
+# Other examples
 python examples/cli_agent.py
 python examples/voice_agent.py
 python examples/realtime_websocket.py
