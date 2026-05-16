@@ -276,6 +276,8 @@ Update language setting: `TranscriptionConfig(language="hu")` - change to correc
 - **[docs/API.md](docs/API.md)** - Complete API reference for all modules
 - **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** - System architecture and design patterns
 - **[docs/LOGGING_AUDIT_TRAIL.md](docs/LOGGING_AUDIT_TRAIL.md)** - Logging and audit trail reference
+- **[docs/TESTING.md](docs/TESTING.md)** - Test architecture, fixtures, and running tests
+- **[docs/LINTING.md](docs/LINTING.md)** - Code quality tools (ruff)
 
 ## External Resources
 

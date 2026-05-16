@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpenAI Voice Agent</title>
+    <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>OpenAI Voice Agent</h1>
+            <p class="subtitle">Real-time voice, transcription, and TTS</p>
+        </header>
+
+        <!-- Tab Navigation -->
+        <nav class="tabs">
+            <button class="tab-btn active" data-tab="realtime">Realtime Voice</button>
+            <button class="tab-btn" data-tab="transcription">Transcription</button>
+            <button class="tab-btn" data-tab="tts">TTS Tester</button>
+            <button class="tab-btn" data-tab="settings">Settings</button>
+        </nav>
+
+        <!-- Tab Content -->
+        <main class="tab-content">
+            <!-- Realtime Voice Tab -->
+            <section id="realtime" class="tab-panel active">
+                <div class="panel">
+                    <h2>Realtime Voice Conversation</h2>
+
+                    <div class="status-bar">
+                        <span class="status-indicator" id="ws-status"></span>
+                        <span id="ws-status-text">Disconnected</span>
+                    </div>
+
+                    <div class="controls">
+                        <button id="connect-btn" class="btn btn-primary">Connect</button>
+                        <button id="disconnect-btn" class="btn btn-secondary" disabled>Disconnect</button>
+                    </div>
+
+                    <div class="ptt-container">
+                        <button id="ptt-btn" class="btn btn-ptt" disabled>
+                            <span class="ptt-icon">🎤</span>
+                            <span class="ptt-text">Hold to Talk</span>
+                        </button>
+                        <div class="recording-indicator" id="recording-indicator"></div>
+                    </div>
+
+                    <div class="conversation-panel">
+                        <h3>Conversation</h3>
+                        <div id="conversation-log" class="conversation-log"></div>
+                    </div>
+
+                    <div class="realtime-config">
+                        <h3>Session Config</h3>
+                        <div class="form-row">
+                            <label for="rt-voice">Voice:</label>
+                            <select id="rt-voice">
+                                <option value="sage">Sage</option>
+                                <option value="ash" selected>Ash</option>
+                                <option value="alloy">Alloy</option>
+                                <option value="echo">Echo</option>
+                                <option value="shimmer">Shimmer</option>
+                            </select>
+                        </div>
+                        <div class="form-row">
+                            <label for="rt-language">Language:</label>
+                            <select id="rt-language">
+                                <option value="hu" selected>Hungarian</option>
+                                <option value="en">English</option>
+                                <option value="de">German</option>
+                                <option value="fr">French</option>
+                                <option value="es">Spanish</option>
+                            </select>
+                        </div>
+                        <div class="form-row">
+                            <label for="rt-instructions">Instructions:</label>
+                            <textarea id="rt-instructions" rows="3" placeholder="System instructions for the AI...">You are a helpful assistant. Respond naturally and concisely.</textarea>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Transcription Tab -->
+            <section id="transcription" class="tab-panel">
+                <div class="panel">
+                    <h2>Speech-to-Text</h2>
+
+                    <div class="transcription-controls">
+                        <button id="record-transcribe-btn" class="btn btn-primary">
+                            <span class="btn-icon">🎤</span> Record & Transcribe
+                        </button>
+                        <span class="or-divider">or</span>
+                        <label class="file-upload-btn btn btn-secondary">
+                            <span class="btn-icon">📁</span> Upload Audio File
+                            <input type="file" id="audio-file-input" accept="audio/*" hidden>
+                        </label>
+                    </div>
+
+                    <div id="transcription-recording-status" class="recording-status hidden">
+                        <div class="pulse"></div>
+                        <span>Recording... Click to stop</span>
+                    </div>
+
+                    <div class="transcription-config">
+                        <div class="form-row">
+                            <label for="stt-model">Model:</label>
+                            <select id="stt-model">
+                                <option value="gpt-4o-mini-transcribe" selected>gpt-4o-mini-transcribe</option>
+                                <option value="whisper-1">whisper-1</option>
+                            </select>
+                        </div>
+                        <div class="form-row">
+                            <label for="stt-language">Language:</label>
+                            <select id="stt-language">
+                                <option value="hu" selected>Hungarian</option>
+                                <option value="en">English</option>
+                                <option value="de">German</option>
+                                <option value="fr">French</option>
+                                <option value="es">Spanish</option>
+                                <option value="">Auto-detect</option>
+                            </select>
+                        </div>
+                        <div class="form-row">
+                            <label for="stt-prompt">Context Prompt:</label>
+                            <input type="text" id="stt-prompt" placeholder="Optional context to guide transcription...">
+                        </div>
+                    </div>
+
+                    <div class="result-panel">
+                        <h3>Transcription Result</h3>
+                        <div id="transcription-result" class="result-text">
+                            <span class="placeholder">Transcription will appear here...</span>
+                        </div>
+                        <button id="copy-transcription-btn" class="btn btn-small" disabled>Copy</button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- TTS Tab -->
+            <section id="tts" class="tab-panel">
+                <div class="panel">
+                    <h2>Text-to-Speech</h2>
+
+                    <div class="tts-input">
+                        <label for="tts-text">Text to synthesize:</label>
+                        <textarea id="tts-text" rows="4" placeholder="Enter text to convert to speech..."></textarea>
+                        <div class="char-count"><span id="tts-char-count">0</span> / 4096</div>
+                    </div>
+
+                    <div class="tts-config">
+                        <div class="form-row">
+                            <label for="tts-voice">Voice:</label>
+                            <select id="tts-voice">
+                                <option value="ash" selected>Ash</option>
+                                <option value="sage">Sage</option>
+                                <option value="alloy">Alloy</option>
+                                <option value="echo">Echo</option>
+                                <option value="shimmer">Shimmer</option>
+                            </select>
+                        </div>
+                        <div class="form-row">
+                            <label for="tts-model">Model:</label>
+                            <select id="tts-model">
+                                <option value="gpt-4o-mini-tts" selected>gpt-4o-mini-tts</option>
+                                <option value="tts-1">tts-1</option>
+                                <option value="tts-1-hd">tts-1-hd</option>
+                            </select>
+                        </div>
+                        <div class="form-row">
+                            <label for="tts-speed">Speed: <span id="tts-speed-value">1.0</span>x</label>
+                            <input type="range" id="tts-speed" min="0.25" max="4.0" step="0.25" value="1.0">
+                        </div>
+                    </div>
+
+                    <div class="tts-controls">
+                        <button id="generate-tts-btn" class="btn btn-primary">
+                            <span class="btn-icon">🔊</span> Generate Speech
+                        </button>
+                        <button id="download-tts-btn" class="btn btn-secondary" disabled>
+                            <span class="btn-icon">💾</span> Download
+                        </button>
+                    </div>
+
+                    <div class="audio-player-container">
+                        <h3>Audio Output</h3>
+                        <div id="tts-audio-container" class="audio-container">
+                            <span class="placeholder">Generated audio will appear here...</span>
+                        </div>
+                        <div id="tts-info" class="audio-info hidden">
+                            Duration: <span id="tts-duration">0.0</span>s
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Settings Tab -->
+            <section id="settings" class="tab-panel">
+                <div class="panel">
+                    <h2>Settings</h2>
+
+                    <div class="settings-section">
+                        <h3>Default Configuration</h3>
+
+                        <div class="form-row">
+                            <label for="default-language">Default Language:</label>
+                            <select id="default-language">
+                                <option value="hu" selected>Hungarian</option>
+                                <option value="en">English</option>
+                                <option value="de">German</option>
+                                <option value="fr">French</option>
+                                <option value="es">Spanish</option>
+                            </select>
+                        </div>
+
+                        <div class="form-row">
+                            <label for="default-voice">Default Voice:</label>
+                            <select id="default-voice">
+                                <option value="ash" selected>Ash</option>
+                                <option value="sage">Sage</option>
+                                <option value="alloy">Alloy</option>
+                                <option value="echo">Echo</option>
+                                <option value="shimmer">Shimmer</option>
+                            </select>
+                        </div>
+
+                        <div class="form-row">
+                            <label for="default-temperature">Temperature: <span id="default-temp-value">0.8</span></label>
+                            <input type="range" id="default-temperature" min="0" max="1" step="0.1" value="0.8">
+                        </div>
+                    </div>
+
+                    <div class="settings-section">
+                        <h3>System Instructions</h3>
+                        <textarea id="default-instructions" rows="5" placeholder="Default system instructions for the AI agent...">You are a helpful assistant. Respond naturally and concisely in the user's language.</textarea>
+                    </div>
+
+                    <div class="settings-actions">
+                        <button id="save-settings-btn" class="btn btn-primary">Save Settings</button>
+                        <button id="reset-settings-btn" class="btn btn-secondary">Reset to Defaults</button>
+                    </div>
+
+                    <div class="settings-section">
+                        <h3>System Status</h3>
+                        <div id="system-status" class="system-status">
+                            <div class="status-item">
+                                <span class="status-label">API Status:</span>
+                                <span id="api-status" class="status-value">Checking...</span>
+                            </div>
+                            <div class="status-item">
+                                <span class="status-label">API Key:</span>
+                                <span id="api-key-status" class="status-value">Checking...</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </main>
+
+        <!-- Toast Notifications -->
+        <div id="toast-container" class="toast-container"></div>
+    </div>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>

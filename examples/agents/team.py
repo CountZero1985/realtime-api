@@ -1,41 +1,68 @@
-"""Agent team configuration for examples.
+"""Agent team configuration.
 
-This module defines the agent team used in example applications:
-- assisstant_agent: Main Hungarian-language assistant with time and display tools
-- tools_agent: Specialized agent for web search queries
+Two agent configurations are provided:
+- shodan_agent: Named persona ("Shodan") with display + web search capabilities
+- assistant_agent: Generic Hungarian voice assistant (lightweight, no persona)
 
-The agents are configured to work together, with the main assistant delegating
-web search tasks to the tools agent.
+Both use the same tools but different prompts and interaction styles.
 """
 
-from agents import Agent
-from examples.agents.prompts.voice_assistant import assisstant_prompt
-from examples.agents.tools import display_text_terminal, get_current_time, websearch_tool
+from agents import Agent, ModelSettings
+from examples.agents.tools import (
+    websearch_tool,
+    get_current_time,
+    get_weather,
+    display_text,
+)
+from examples.agents.prompts import shodan_prompt, generic_assistant_prompt
 
-#
-# a megnyitott linkeket valahól chacelni kellene egy state-ben, ha további user interakcióhoz.
-tools_agent = Agent( # lehet hogy structured outputba kell terelni a dolgot? információ és igazolólink és külön feldolgozni őket
-    name="ToolsAgent",
-    # handoff_description="Egy ügynök, aki internetes keresést végez, ha a felhasználó olyan kérdést tesz fel, amihez webes információ kell.",
-    instructions=
-    """
-Ha a felhasználó olyan kérdést tesz fel, amelyhez internetes keresés szükséges, használd a websearch eszközt, és add át
-a választ röviden összefoglalva. Csak szöveges választ adj, ne adj meg forrásmegjelölést. Mindig magyarul válaszolj!
-válaszod egy tts modelbe van csatornázva, ezért soha ne add meg közvetlenül a forrásokat,
-a forrásokat szöveges leírásként add meg például így:  azt írja a Portfólió: ... ; vagy a Magyar Nemzet szerint: ... ; adunamenti.com honlap értesülései szerint: ... ;)
-    """,
+
+# --- Web search specialist (delegated tool-agent) ---
+search_agent = Agent(
+    name="SearchAgent",
+    instructions=(
+        "Internetes keresest vegzel. A keresesi eredmenyeket roviden, magyarul "
+        "foglald ossze. Forrasokat szovegesen jelold (pl. 'a Telex szerint...'). "
+        "Ne adj meg URL-eket kozvetlenul."
+    ),
     model="gpt-4o-mini",
-    tools=[websearch_tool, display_text_terminal],
+    tools=[websearch_tool],
 )
-# fő ügynök
-assisstant_agent = Agent(
+
+# --- Shodan persona agent ---
+shodan_agent = Agent(
+    name="Shodan",
+    instructions=shodan_prompt,
     model="gpt-4o-mini",
-    name="AssistantAgent",
-    instructions=assisstant_prompt,
-    # mcp_servers=[file_container],
-    # handoffs=[],
-    tools=[display_text_terminal, get_current_time, tools_agent.as_tool(
-        tool_name="ToolsAgent",
-        tool_description="Egy ügynök, aki internetes keresést végez."
-    )],
+    model_settings=ModelSettings(temperature=0.7),
+    tools=[
+        get_current_time,
+        get_weather,
+        display_text,
+        search_agent.as_tool(
+            tool_name="web_search",
+            tool_description="Internetes keresest vegez es magyarul osszefoglalja az eredmenyt.",
+        ),
+    ],
 )
+
+# --- Generic assistant agent (no persona) ---
+assistant_agent = Agent(
+    name="Assistant",
+    instructions=generic_assistant_prompt,
+    model="gpt-4o-mini",
+    model_settings=ModelSettings(temperature=0.7),
+    tools=[
+        get_current_time,
+        get_weather,
+        display_text,
+        search_agent.as_tool(
+            tool_name="web_search",
+            tool_description="Internetes keresest vegez es magyarul osszefoglalja az eredmenyt.",
+        ),
+    ],
+)
+
+# Backward compatibility aliases
+assisstant_agent = assistant_agent
+tools_agent = search_agent

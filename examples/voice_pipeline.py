@@ -14,9 +14,9 @@ Features:
 
 Example usage:
     from examples.voice_pipeline import AgentFrameworkAPI
-    from examples.agents.team import assisstant_agent
+    from examples.agents.team import shodan_agent
 
-    api = AgentFrameworkAPI(agent=assisstant_agent)
+    api = AgentFrameworkAPI(agent=shodan_agent)
     await api.run_interactive()
 """
 
@@ -540,9 +540,9 @@ def start_voice_agent(
         state: Optional state dictionary.
 
     Example:
-        >>> from examples.agents.team import assisstant_agent
+        >>> from examples.agents.team import shodan_agent
         >>> from examples.voice_pipeline import start_voice_agent
-        >>> start_voice_agent(assisstant_agent)
+        >>> start_voice_agent(shodan_agent)
     """
     api = AgentFrameworkAPI(agent=agent, config=config, state=state)
     api.run_interactive_sync()
@@ -552,6 +552,6 @@ if __name__ == "__main__":
     print("Voice Pipeline Example Module")
     print("\nExample:")
     print("  from examples.voice_pipeline import AgentFrameworkAPI")
-    print("  from examples.agents.team import assisstant_agent")
-    print("  api = AgentFrameworkAPI(agent=assisstant_agent)")
+    print("  from examples.agents.team import shodan_agent")
+    print("  api = AgentFrameworkAPI(agent=shodan_agent)")
     print("  api.run_interactive_sync()")
