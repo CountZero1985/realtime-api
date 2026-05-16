@@ -14,7 +14,7 @@ dependencies = [
 audio = ["sounddevice>=0.5.3", "numpy>=2.4.0", "websocket-client>=1.5.0"]
 web = ["fastapi", "uvicorn", "python-multipart", "aiofiles"]
 agents = ["openai-agents"]
-dev = ["pytest>=7.0.0", "pytest-asyncio>=0.21.0", "pytest-cov>=4.0.0", "httpx"]
+dev = ["pytest>=7.0.0", "pytest-asyncio>=0.21.0", "pytest-cov>=4.0.0", "httpx", "schemathesis>=3.19.0"]
 all = ["openai-apis[audio,web,agents]"]
 
 [build-system]

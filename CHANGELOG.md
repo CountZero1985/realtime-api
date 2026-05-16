@@ -25,6 +25,65 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **README.md rewrite** - Restructured README to be concise and user-focused (issue #37):
+  - **New structure**: Overview, Installation, Quick Start, Configuration, Examples, API Reference sections
+  - **Reduced length**: From ~657 lines to 252 lines by removing verbose API usage sections that duplicated `docs/API.md`
+  - **Quick Start**: Added three concise code snippets (Transcription, TTS, Realtime) showing essential usage patterns
+  - **API Reference table**: Added table of main classes with one-line descriptions (previously missing)
+  - **Configuration section**: Consolidated VAD, audio format, language, voice, and tool calling examples
+  - **Examples section**: Simplified to list runnable scripts with brief descriptions
+  - **Removed redundant content**: Deleted verbose sections that are better covered in `docs/API.md` (Session Lifecycle, detailed API usage, Per-Session Audit Logging)
+  - README now serves as a high-level user guide with links to comprehensive documentation in `docs/`
+
+### Added
+
+- **End-to-End Integration Tests** - Comprehensive E2E test suite exercising complete API workflows (issue #38):
+  - **New `tests/integration/test_e2e_flows.py`**: 7 test classes with 20+ tests covering all core APIs (~1200 lines)
+  - **New `tests/integration/conftest.py`**: Shared fixtures including `MockWebSocket`, `ErrorMockWebSocket`, handshake helpers, sample audio, and temp directory fixtures
+  - **TestTranscriptionFlow**: Full transcription workflow (session → audio → deltas → completed → close) and state transition validation
+  - **TestRealtimeVoiceFlow**: Realtime voice flow with audio streaming, typed events (`AudioDelta`, `TranscriptCompleted`), and conversation history tracking
+  - **TestTTSFlow**: TTS provider lifecycle (creation → synthesis → output), file synthesis, registry factory pattern, and empty text validation
+  - **TestToolCallingFlow**: Complete tool execution flow with `ToolRegistry`, sync/async handlers, auto-execution, and result forwarding
+  - **TestAuditLogFlow**: Audit trail completeness, JSON/file export, duration measurement with context manager, and audio duration tracking
+  - **TestConfigFlow**: Configuration propagation to `session.update` WebSocket messages (VAD modes, tools, audio format consistency)
+  - **TestErrorRecovery**: Connection drop handling, reconnection with exponential backoff, error event emission, and `InvalidStateTransition` validation
+  - **Coverage targets**: Session lifecycle state machine, event callbacks, audit logging, tool calling, configuration, and error recovery
+  - **Mock patterns**: Reusable `MockWebSocket` with message queue, `ErrorMockWebSocket` for connection failures, handshake message helpers
+  - All tests use `@pytest.mark.asyncio` with proper async/await patterns and mock WebSocket backends
+  - Tests validate both callback data AND sent WebSocket messages for bidirectional correctness
+  - Run with: `pytest tests/integration/test_e2e_flows.py -v` or `pytest tests/integration/ -v`
+
+- **FastAPI Web Server Example** - Production-ready web server with REST and WebSocket endpoints (issue #36):
+  - **New `examples/web_server/` package**: Complete FastAPI application with application factory pattern
+  - **REST endpoint**: `POST /api/tts` for text-to-speech synthesis with base64 JSON or raw PCM binary response
+  - **WebSocket endpoints**: `WS /ws/transcription` for streaming transcription, `WS /ws/realtime` for full-duplex voice conversation
+  - **System endpoints**: `GET /api/health` for monitoring, `GET /api/config` for client configuration discovery
+  - **Pydantic validation**: Request/response models (`TTSRequest`, `TTSResponse`) with field validation
+  - **CORS middleware**: Configured for local development with customizable origins
+  - **Session management**: WebSocket handlers use `async with` context managers for automatic cleanup
+  - **Event forwarding**: Session callbacks bridge sync events to async WebSocket sends via `asyncio.ensure_future()`
+  - **Typed event integration**: WebSocket realtime endpoint uses typed events (`AudioDelta`, `TranscriptCompleted`, etc.)
+  - **Entry point**: `python examples/web_server/run.py` with CLI arguments for host, port, and reload
+  - **Dependencies**: Requires `[web]` extra (`fastapi`, `uvicorn`, `python-multipart`)
+  - **Comprehensive tests**: Full test coverage in `tests/test_web_server.py` and `tests/api/test_web_server_schema.py`
+  - **Documentation**: Complete API documentation in `docs/API.md` with endpoint specs, data flow diagrams, and production deployment guide
+  - Demonstrates integration of all three core APIs (TTS, Transcription, Realtime) in web application
+
+### Changed
+
+- **Voice Agent Example Rewrite** - Rewrote `examples/voice_agent.py` as push-to-talk RealtimeSession example (issue #35):
+  - **Push-to-talk mode**: Replaced VoicePipeline-based implementation with RealtimeSession using VAD disabled mode
+  - **ToolRegistry integration**: Demonstrates tool/function calling with `get_current_time` and `get_weather` tools
+  - **Audio streaming**: Manual audio recording via `record_audio()`, chunked streaming (4800 samples/0.2s chunks) to WebSocket
+  - **Event-driven playback**: Accumulates audio deltas in bytearray buffer, plays via AudioPlayer on `audio.done` event
+  - **Conversation history**: Interactive `h` command displays full conversation transcript via `session.get_conversation_history()`
+  - **Audit log export**: Automatic export of per-session audit log to `logs/voice_agent_audit.json` on exit
+  - **Graceful exit**: Supports both `q` command and Ctrl+C with proper cleanup
+  - **Hungarian interface**: All UI text and prompts in Hungarian language
+  - Example demonstrates complete RealtimeSession workflow: event callbacks, audio I/O, tool execution, and audit logging
+
+### Changed
+
 - **Public API Cleanup** - Simplified `openai_apis/__init__.py` to export minimal, clean public API surface (issue #33):
   - **Reduced exports**: From 42 symbols to 16 core symbols organized into logical groups
   - **Core sessions**: `TranscriptionSession`, `TranscriptionConfig`, `RealtimeSession`, `RealtimeConfig`, `TTSProvider`, `TTSConfig`, `TTSRegistry`

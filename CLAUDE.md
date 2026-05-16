@@ -10,15 +10,17 @@ A real-time voice agent system integrating OpenAI's Realtime API and OpenAI Agen
 
 ```bash
 uv sync                              # Install dependencies
-pytest tests/ -v                     # Run tests
+pytest tests/ -v                     # Run all tests
 pytest tests/ --cov=openai_apis      # Tests with coverage
+pytest tests/unit/ -v                # Unit tests only
+pytest tests/integration/ -v         # Integration tests (E2E flows)
 
 # Run example scripts
 python examples/cli_app.py transcription  # Multi-mode CLI: transcription mode
 python examples/cli_app.py voice          # Multi-mode CLI: voice mode
 python examples/cli_app.py tts            # Multi-mode CLI: TTS mode
 python examples/cli_agent.py              # Text-based agent (CLI)
-python examples/voice_agent.py            # Voice-based agent (VoicePipeline)
+python examples/voice_agent.py            # Push-to-talk voice agent (RealtimeSession)
 python examples/realtime_websocket.py     # WebSocket realtime API
 ```
 
@@ -131,11 +133,14 @@ The `examples/` directory contains standalone runnable examples demonstrating di
 - Conversation history tracking
 - Hungarian language support
 
-**`examples/voice_agent.py`** - Voice-based agent
-- Voice input → transcription → agent → TTS → audio output
-- Uses OpenAI Agents SDK `VoicePipeline`
-- Custom `StreamingVoiceWorkflow` for agent integration
-- Push-to-talk recording mode
+**`examples/voice_agent.py`** - Push-to-talk voice agent with RealtimeSession
+- Interactive push-to-talk mode with Enter key recording
+- Direct RealtimeSession WebSocket connection (no VoicePipeline)
+- ToolRegistry-based tool calling (`get_current_time`, `get_weather`)
+- Event-driven audio streaming: accumulate deltas, play on `audio.done`
+- Conversation history viewing (`h` command)
+- Audit log export to `logs/voice_agent_audit.json` on exit
+- Demonstrates complete RealtimeSession workflow with Hungarian UI
 
 **`examples/realtime_websocket.py`** - Realtime WebSocket API
 - Direct WebSocket connection to OpenAI Realtime API
