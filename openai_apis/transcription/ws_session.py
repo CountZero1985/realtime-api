@@ -42,7 +42,7 @@ class TranscriptionSession(BaseSession):
     """
 
     WEBSOCKET_URL = "wss://api.openai.com/v1/realtime"
-    REALTIME_MODEL = "gpt-4o-mini-realtime-preview-2024-12-17"
+    REALTIME_MODEL = "gpt-realtime"
 
     def __init__(
         self,
@@ -115,7 +115,6 @@ class TranscriptionSession(BaseSession):
         url = f"{self.WEBSOCKET_URL}?model={self.REALTIME_MODEL}"
         headers = {
             "Authorization": f"Bearer {self._config.api_key}",
-            "OpenAI-Beta": "realtime=v1",
         }
 
         # Connect WebSocket
@@ -297,8 +296,11 @@ class TranscriptionSession(BaseSession):
             self._logger.debug(f"Received event: {event_type}")
             self._audit_log.log(f"event.received.{event_type}", event)
 
-            # Route by event type
-            if event_type == "conversation.item.input_audio_transcription.delta":
+            # Route by event type (GA API event names)
+            if event_type in (
+                "input_audio_buffer.transcription.delta",
+                "conversation.item.input_audio_transcription.delta",  # beta compat
+            ):
                 delta = event.get("delta", "")
                 item_id = event.get("item_id")
                 self._emit(
@@ -310,7 +312,10 @@ class TranscriptionSession(BaseSession):
                     },
                 )
 
-            elif event_type == "conversation.item.input_audio_transcription.completed":
+            elif event_type in (
+                "input_audio_buffer.transcription.completed",
+                "conversation.item.input_audio_transcription.completed",  # beta compat
+            ):
                 transcript = event.get("transcript", "")
                 item_id = event.get("item_id")
                 self._emit(
@@ -322,7 +327,10 @@ class TranscriptionSession(BaseSession):
                     },
                 )
 
-            elif event_type == "conversation.item.input_audio_transcription.failed":
+            elif event_type in (
+                "input_audio_buffer.transcription.failed",
+                "conversation.item.input_audio_transcription.failed",  # beta compat
+            ):
                 error = event.get("error", {})
                 self._emit(
                     "error",
@@ -359,34 +367,42 @@ class TranscriptionSession(BaseSession):
     async def _send_session_update(self) -> None:
         """Send session.update event with transcription configuration.
 
-        Configures the session for transcription-only mode with VAD settings
-        (or push-to-talk if VAD is disabled) and the specified language and model settings.
+        Uses the GA Realtime API format (session type: transcription).
+        The transcription model (e.g. gpt-realtime-whisper) is specified
+        inside audio.input.transcription, not in the URL model parameter.
         """
-        # Map model - Realtime API only supports whisper-1 for transcription
-        transcription_model = (
-            "whisper-1" if self._config.model == "whisper-1" else "whisper-1"
-        )
+        transcription_model = self._config.model or "gpt-realtime-whisper"
 
-        turn_detection = self._vad_config_to_turn_detection(self._config.vad)
+        transcription_config = {
+            "model": transcription_model,
+        }
+        if self._config.language:
+            transcription_config["language"] = self._config.language
 
         event = {
             "type": "session.update",
             "session": {
-                "modalities": ["text"],
-                "input_audio_transcription": {
-                    "model": transcription_model,
-                    "language": self._config.language,
+                "type": "transcription",
+                "audio": {
+                    "input": {
+                        "format": {
+                            "type": "audio/pcm",
+                            "rate": 24000,
+                        },
+                        "transcription": transcription_config,
+                    },
                 },
-                "input_audio_format": "pcm16",
-                "turn_detection": turn_detection,
+                "turn_detection": self._vad_config_to_turn_detection(
+                    self._config.vad
+                ),
             },
         }
 
         await self._send_event(event)
         self._logger.debug(
-            f"Sent session.update with model={transcription_model}, "
+            f"Sent session.update (GA transcription) with model={transcription_model}, "
             f"language={self._config.language}, "
-            f"turn_detection={turn_detection}"
+            f"vad_mode={self._config.vad.mode if self._config.vad else 'disabled'}"
         )
 
     async def _reconnect(self) -> None:
@@ -413,7 +429,6 @@ class TranscriptionSession(BaseSession):
                 url = f"{self.WEBSOCKET_URL}?model={self.REALTIME_MODEL}"
                 headers = {
                     "Authorization": f"Bearer {self._config.api_key}",
-                    "OpenAI-Beta": "realtime=v1",
                 }
                 self._ws = await websockets.connect(url, additional_headers=headers)
 

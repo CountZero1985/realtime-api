@@ -22,3 +22,6 @@ htmlcov/
 
 # Claude Code
 .claude/
+
+# ADW workflows
+.adw/
