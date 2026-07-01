@@ -162,7 +162,6 @@ class RealtimeSession(BaseSession):
         url = f"{self.WEBSOCKET_URL}?model={self._config.model}"
         headers = {
             "Authorization": f"Bearer {self._config.api_key}",
-            "OpenAI-Beta": "realtime=v1",
         }
         self._ws = await websockets.connect(url, additional_headers=headers)
         self._audit_log.log("websocket.connected", {"url": url})
