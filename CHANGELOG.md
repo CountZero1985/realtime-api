@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **GA API migration** — Removed deprecated `OpenAI-Beta: realtime=v1` header from `RealtimeSession` (beta disabled May 2026). GA API uses plain `Authorization: Bearer` header.
+- **TranscriptionSession ephemeral token flow** — Rewrote connection to use REST `POST /transcription_sessions` → `client_secret` → WebSocket auth, matching the OpenAI SDK pattern. Raises clear `ConnectionError` when endpoint returns 404 (not yet available).
+- **TranscriptionSession turn_detection placement** — Moved `turn_detection` from `session` level to `session.audio.input` per GA docs.
+- **TranscriptionSession event names** — Updated to official GA event names: `conversation.item.input_audio_transcription.delta/completed/failed`.
+- **TranscriptionSession error handling** — Added proper handling when first WebSocket message is an error (not `session.created`).
+
 ### Added
 
 - **Multi-mode Interactive CLI Application** - Transformed `examples/cli_app.py` into a unified CLI demonstrating all three core `openai_apis` modules (issue #34):

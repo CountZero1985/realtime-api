@@ -6,11 +6,22 @@
 
 `openai-apis` is a production-ready Python package providing three core API modules for building voice-enabled applications:
 
-- **Transcription** — WebSocket-based realtime speech-to-text with Whisper models
+- **Transcription** — Speech-to-text via Audio API (`gpt-4o-mini-transcribe`) and realtime streaming (`gpt-realtime-whisper`, when available)
 - **TTS** — Text-to-speech synthesis with 13+ voices and provider extensibility
-- **Realtime** — Low-latency WebSocket voice interaction with tool calling support
+- **Realtime** — Low-latency WebSocket voice interaction with tool calling support (`gpt-realtime-mini`)
 
 Key features: async context manager sessions, provider-based TTS architecture, Voice Activity Detection (VAD), per-session audit logging, and support for 100+ languages (optimized for Hungarian).
+
+### API status (GA, as of 2026-07)
+
+| Module | Model | API | Status |
+|--------|-------|-----|--------|
+| `RealtimeSession` | `gpt-realtime-mini` | WebSocket `/v1/realtime` | ✅ Working |
+| `TranscriptionAPI` | `gpt-4o-mini-transcribe` | REST `/v1/audio/transcriptions` | ✅ Working |
+| `TranscriptionSession` | `gpt-realtime-whisper` | WebSocket (ephemeral token) | ❌ Endpoint not yet available |
+| `TTSProvider` | `tts-1` / `tts-1-hd` | REST `/v1/audio/speech` | ✅ Working |
+
+> **Note:** The OpenAI Beta Realtime API header (`OpenAI-Beta: realtime=v1`) was deprecated in May 2026. This package uses the GA API without the beta header.
 
 ## Installation
 
@@ -60,13 +71,27 @@ echo "OPENAI_API_KEY=sk-..." > .env
 
 ### Transcription (Speech-to-Text)
 
+**Audio API** (file/buffer transcription — recommended, works now):
+
+```python
+from openai_apis.transcription import TranscriptionAPI, TranscriptionConfig
+
+config = TranscriptionConfig(model="gpt-4o-mini-transcribe", language="hu")
+api = TranscriptionAPI(config)
+
+text = await api.transcribe_file("recording.wav")
+print(text)
+```
+
+**Realtime streaming** (when `gpt-realtime-whisper` endpoint becomes available):
+
 ```python
 from openai_apis import TranscriptionSession, TranscriptionConfig
 
 async with TranscriptionSession(TranscriptionConfig(language="hu")) as session:
-    session.on("transcript.completed", lambda t: print(f"Final: {t.transcript}"))
+    session.on("transcript.completed", lambda t: print(f"Final: {t['transcript']}"))
 
-    await session.send_audio(audio_chunk)  # numpy array, 24kHz mono
+    await session.send_audio(audio_chunk)  # PCM16 24kHz mono bytes
     await session.commit_audio()
 ```
 
@@ -208,8 +233,9 @@ pytest tests/integration/test_e2e_flows.py -v       # E2E integration tests
 
 | Class | Module | Description |
 |-------|--------|-------------|
-| `TranscriptionSession` | `openai_apis` | WebSocket-based realtime speech-to-text |
-| `RealtimeSession` | `openai_apis` | WebSocket-based realtime voice interaction |
+| `TranscriptionAPI` | `openai_apis.transcription` | Audio API speech-to-text (file/buffer, `gpt-4o-mini-transcribe`) |
+| `TranscriptionSession` | `openai_apis` | Realtime streaming speech-to-text (`gpt-realtime-whisper`) |
+| `RealtimeSession` | `openai_apis` | WebSocket-based realtime voice interaction (`gpt-realtime-mini`) |
 | `TTSRegistry` | `openai_apis` | Factory for creating TTS providers |
 | `TTSProvider` | `openai_apis` | Abstract base class for TTS providers |
 
@@ -267,6 +293,17 @@ uv sync --extra all  # or: pip install -e ".[all]"
 python --version  # Should be >= 3.12
 ```
 
+### TranscriptionSession raises ConnectionError (404)
+The realtime streaming transcription endpoint (`POST /v1/realtime/transcription_sessions`) is not yet available on all accounts. Use `TranscriptionAPI` with the Audio API as a working alternative:
+```python
+from openai_apis.transcription import TranscriptionAPI, TranscriptionConfig
+api = TranscriptionAPI(TranscriptionConfig(model="gpt-4o-mini-transcribe"))
+text = await api.transcribe_file("audio.wav")
+```
+
+### "beta_api_shape_disabled" error
+The OpenAI Beta Realtime API (`OpenAI-Beta: realtime=v1`) was deprecated in May 2026. Update to the latest version of this package which uses the GA API.
+
 ### Transcription in wrong language
 Update language setting: `TranscriptionConfig(language="hu")` - change to correct language code.
 
@@ -287,4 +324,4 @@ Update language setting: `TranscriptionConfig(language="hu")` - change to correc
 
 ---
 
-**Version:** 1.0 | **Package:** openai-apis | **Status:** Production-ready
+**Version:** 1.1 | **Package:** openai-apis | **Status:** Production-ready | **API:** OpenAI GA (2026-07)
