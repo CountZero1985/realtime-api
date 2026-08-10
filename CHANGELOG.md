@@ -31,6 +31,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`RealtimeSession` delivered no audio on the GA API.** The dispatcher still matched the beta event names, so a GA session connected, received audio on the wire, and emitted nothing to the caller — no error, no callback, just silence. Renamed to the GA names in `session.py`, `events.py` and the web realtime proxy:
+
+  | beta | GA |
+  |---|---|
+  | `response.audio.delta` | `response.output_audio.delta` |
+  | `response.audio.done` | `response.output_audio.done` |
+  | `response.audio_transcript.delta` | `response.output_audio_transcript.delta` |
+  | `response.audio_transcript.done` | `response.output_audio_transcript.done` |
+
+  Every other handled event name is unchanged under GA (verified against `openai-python`'s generated types). Confirmed end-to-end against the live API: `audio.delta` now fires with real PCM and `transcript.delta` accumulates.
 - **`POST /api/transcribe` returned 500 on every request.** The route passed `temperature=` to `TranscriptionConfig`, which has no such field, so the endpoint raised `TypeError` before doing any work. The form parameter is kept for API compatibility but documented as not applied.
 - **The test suite made real network calls.** After the GA migration, `TranscriptionSession._connect()` performs a REST `POST /realtime/transcription_sessions` before opening the WebSocket. Tests patched only `websockets.connect`, so 27 of them reached `api.openai.com` and failed on its 404 — offline and CI runs could never pass. Added a shared `mock_transcription_rest` fixture in `tests/conftest.py`, applied module-wide in the transcription unit tests.
 - **Stale beta-schema assertions** across the transcription and realtime test suites (flat `turn_detection` / `input_audio_transcription` / `modalities`, the raw API key as WebSocket credential, and the removed `REALTIME_MODEL` constant) updated to the GA shape. The whole suite now passes: **668 passed, 0 failed** (was 37 failing).

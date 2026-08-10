@@ -107,7 +107,7 @@ class TestDeltaEventCallbacks:
         api.on("transcript.delta", callback)
 
         message = json.dumps({
-            "type": "response.audio_transcript.delta",
+            "type": "response.output_audio_transcript.delta",
             "item_id": "item_2",
             "delta": "world"
         })
@@ -168,7 +168,7 @@ class TestDeltaEventCallbacks:
         api.on("transcript.output", callback)
 
         completed_msg = json.dumps({
-            "type": "response.audio_transcript.done",
+            "type": "response.output_audio_transcript.done",
             "item_id": "item_1",
             "transcript": "response text"
         })
@@ -249,7 +249,7 @@ class TestDeltaEventAuditLogging:
 
     def test_response_delta_event_audit_logged(self, api):
         message = json.dumps({
-            "type": "response.audio_transcript.delta",
+            "type": "response.output_audio_transcript.delta",
             "item_id": "item_2",
             "delta": "world"
         })
@@ -257,7 +257,7 @@ class TestDeltaEventAuditLogging:
 
         # Check per-session audit log
         events = [e for e in api.audit_log.events
-                  if e.event_type == "event.received.response.audio_transcript.delta"]
+                  if e.event_type == "event.received.response.output_audio_transcript.delta"]
         assert len(events) >= 1
 
     def test_completed_event_audit_logged(self, api):

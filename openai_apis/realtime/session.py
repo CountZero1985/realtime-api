@@ -503,7 +503,7 @@ class RealtimeSession(BaseSession):
             ))
 
         # Output transcription (model speech as text)
-        elif event_type == "response.audio_transcript.delta":
+        elif event_type == "response.output_audio_transcript.delta":
             item_id = event.get("item_id", "")
             delta_text = event.get("delta", "")
             accumulated = self._accumulate_delta(item_id, delta_text)
@@ -511,7 +511,7 @@ class RealtimeSession(BaseSession):
                 item_id=item_id, delta=delta_text, accumulated=accumulated,
             ))
 
-        elif event_type == "response.audio_transcript.done":
+        elif event_type == "response.output_audio_transcript.done":
             item_id = event.get("item_id", "")
             transcript = event.get("transcript", "")
             duration_ms = self._complete_accumulation(item_id)
@@ -526,7 +526,7 @@ class RealtimeSession(BaseSession):
             ))
 
         # Audio response
-        elif event_type == "response.audio.delta":
+        elif event_type == "response.output_audio.delta":
             audio_b64 = event.get("delta", "")
             audio_bytes = base64.b64decode(audio_b64)
             item_id = event.get("item_id", "")
@@ -546,7 +546,7 @@ class RealtimeSession(BaseSession):
                 response_id=response_id,
             ))
 
-        elif event_type == "response.audio.done":
+        elif event_type == "response.output_audio.done":
             item_id = event.get("item_id", "")
             response_id = event.get("response_id", "")
             # Audit log with accumulated audio stats
