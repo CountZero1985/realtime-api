@@ -203,7 +203,26 @@ python examples/cli_agent.py          # Text-based CLI agent
 python examples/voice_agent.py        # Push-to-talk voice agent
 python examples/realtime_websocket.py # Realtime WebSocket API
 python examples/web_server/run.py     # FastAPI web server (requires [web] extra)
+python examples/translation_latency_bench.py  # Translation onset-latency benchmark
 ```
+
+**Translation latency benchmark**
+
+`examples/translation_latency_bench.py` measures how long after committing an
+utterance the first translated audio arrives, and flags the two ways a
+prompt-driven translator fails: narrating the utterance in reported speech, or
+answering the question instead of translating it. Input audio is synthesised
+with TTS so runs are reproducible and comparable across models.
+
+```bash
+python examples/translation_latency_bench.py --model gpt-realtime-mini --runs 3
+python examples/translation_latency_bench.py --prompt-file my_prompt.txt --json out.json
+```
+
+It talks raw WebSocket on purpose: it measures the API, so it must not inherit
+the client library's assumptions about event names or payload shape. It prints
+the audio event types the API actually sent, which is how you notice when those
+assumptions drift.
 
 See the [examples/](examples/) directory for full source code and agent configurations.
 
