@@ -1,0 +1,7 @@
+# Kérdés-nehéz halmaz: itt jött elő a "válaszol fordítás helyett" hibamód.
+en	Excuse me, could you tell me where the nearest pharmacy is?
+en	What time does the last train to the airport leave?
+de	Können Sie mir bitte sagen, wo sich der nächste Geldautomat befindet?
+de	Wie viel kostet ein Ticket für zwei Erwachsene und ein Kind?
+en	Do you know if this restaurant takes credit cards?
+de	Der Zug nach München fährt heute leider eine halbe Stunde später ab.
