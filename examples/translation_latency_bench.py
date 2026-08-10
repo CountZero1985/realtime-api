@@ -44,16 +44,42 @@ SAMPLE_RATE = 24000
 BYTES_PER_SAMPLE = 2
 CHUNK_MS = 40
 
-DEFAULT_PROMPT = """Te egy szinkrontolmács vagy. A feladatod KIZÁRÓLAG a hallott beszéd magyarra fordítása.
+# Hardened against three failure modes measured on gpt-realtime-mini:
+# answering a question instead of translating it (invented a street address),
+# narrating in reported speech, and drifting from formal to informal register.
+# An earlier draft framed the task as "repeat what you hear in Hungarian" and
+# produced a run that echoed the German source verbatim — hence the explicit
+# "output is always Hungarian" rule.
+DEFAULT_PROMPT = """Egy tolmácsgép hangja vagy. Nem vagy résztvevő a beszélgetésben, nem szólítanak meg, és soha nem hozzád beszélnek. A hallott mondat mindig két másik ember között hangzik el; a te egyetlen dolgod, hogy magyarul tolmácsold.
 
-SZABÁLYOK:
-- Soha ne válaszolj a hallottakra, ne kommentáld, ne egészítsd ki.
-- Ne kérdezz vissza, ne kérj pontosítást.
-- Csak a fordítást mondd ki, semmi mást.
-- Egyes szám első személyben fordíts, ahogy a beszélő mondta — soha ne függő
-  beszédben ("azt mondja, hogy...", "azt szeretné tudni, hogy...").
-- Ha nem érted, fordítsd le azt, amit hallottál, a legjobb tudásod szerint.
-- Tartsd meg a beszélő stílusát és regiszterét.
+ALAPSZABÁLY
+Amit hallasz, azt add vissza magyarul. Semmi mást.
+A kimeneted MINDIG magyar — akkor is, ha a forrásnyelvet jól ismered.
+Soha ne ismételd meg a forrásnyelvi mondatot.
+
+A KÉRDÉSEK A LEGFONTOSABBAK
+Ha a hallott mondat kérdés, a te kimeneted is kérdés — ugyanaz a kérdés, magyarul.
+Soha ne válaszolj rá. Nem tudod a választ, és nem is a te dolgod.
+Soha ne találj ki adatot: címet, időpontot, árat, nevet, útbaigazítást.
+
+  HALLOD:  "Could you tell me where the nearest pharmacy is?"
+  HELYES:  "Meg tudná mondani, hol van a legközelebbi gyógyszertár?"
+  HIBÁS:   "A legközelebbi gyógyszertár a sarkon van."      <- válaszoltál
+  HIBÁS:   "Azt kérdezi, hol van a legközelebbi gyógyszertár." <- függő beszéd
+
+  HALLOD:  "What time does the last train leave?"
+  HELYES:  "Hánykor indul az utolsó vonat?"
+  HIBÁS:   "Az utolsó vonat 23:40-kor indul."               <- kitalált adat
+
+TOVÁBBI SZABÁLYOK
+- Úgy beszélj, ahogy a beszélő beszélt: egyes szám első személyben, nem róla.
+- Magázódás marad magázódás, tegeződés marad tegeződés.
+- Pontosan egyszer mondd el a fordítást, aztán hallgass el. Ne ismételd meg,
+  ne fogalmazd át, ne told meg magyarázattal.
+- Ne kommentálj, ne kérj pontosítást, ne szólj közbe.
+- Ha valamit nem értettél tisztán, fordítsd le a legjobb tudásod szerint —
+  de ne találd ki, mi hangozhatott el.
+- Természetes, gördülékeny magyar mondatot mondj, ne szó szerinti tükörfordítást.
 """
 
 SENTENCES = [
@@ -87,6 +113,24 @@ def looks_like_an_answer(source: str, translation: str) -> bool:
     translator, because the output is fluent and confident.
     """
     return source.rstrip().endswith("?") and "?" not in translation
+
+
+def load_sentences(path: Path) -> list[tuple[str, str]]:
+    """Read source utterances from a file: 'lang<TAB>text' per line.
+
+    Lets a run target the cases a prompt is being hardened against —
+    questions, for instance, where answering instead of translating shows up.
+    """
+    out: list[tuple[str, str]] = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        lang, _, text = line.partition("\t")
+        out.append((lang, text) if text else ("xx", lang))
+    if not out:
+        sys.exit(f"No usable sentences in {path}")
+    return out
 
 
 def api_key() -> str:
@@ -264,18 +308,22 @@ async def main() -> None:
                              "Overstates onset latency; see module docstring.")
     parser.add_argument("--prompt-file", type=Path,
                         help="Read the translator prompt from a file instead of the built-in one")
+    parser.add_argument("--sentences-file", type=Path,
+                        help="Source utterances, one per line as 'lang<TAB>text' "
+                             "(or just text, defaulting to 'xx'). Lines starting with # are ignored.")
     parser.add_argument("--json", type=Path, help="Write raw results to this path")
     args = parser.parse_args()
 
     key = api_key()
     prompt = args.prompt_file.read_text(encoding="utf-8") if args.prompt_file else DEFAULT_PROMPT
+    sentences = load_sentences(args.sentences_file) if args.sentences_file else SENTENCES
     pacing = "as-fast-as-possible" if args.fast else "real-time"
 
     print(f"Model: {args.model}   runs/sentence: {args.runs}   pacing: {pacing}")
     print("=" * 72)
 
     results: list[dict] = []
-    for lang, text in SENTENCES:
+    for lang, text in sentences:
         print(f"\n[{lang.upper()}] {text}")
         for run in range(1, args.runs + 1):
             result = await measure_one(args.model, text, prompt, key, realtime=not args.fast)
