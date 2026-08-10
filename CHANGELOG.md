@@ -31,6 +31,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`POST /api/transcribe` returned 500 on every request.** The route passed `temperature=` to `TranscriptionConfig`, which has no such field, so the endpoint raised `TypeError` before doing any work. The form parameter is kept for API compatibility but documented as not applied.
+- **The test suite made real network calls.** After the GA migration, `TranscriptionSession._connect()` performs a REST `POST /realtime/transcription_sessions` before opening the WebSocket. Tests patched only `websockets.connect`, so 27 of them reached `api.openai.com` and failed on its 404 — offline and CI runs could never pass. Added a shared `mock_transcription_rest` fixture in `tests/conftest.py`, applied module-wide in the transcription unit tests.
+- **Stale beta-schema assertions** across the transcription and realtime test suites (flat `turn_detection` / `input_audio_transcription` / `modalities`, the raw API key as WebSocket credential, and the removed `REALTIME_MODEL` constant) updated to the GA shape. The whole suite now passes: **668 passed, 0 failed** (was 37 failing).
 - **Beta header leaked back in on reconnect.** `RealtimeSession.connect()` correctly omitted `OpenAI-Beta: realtime=v1`, but the reconnect path still sent it — so a dropped connection silently restored beta semantics mid-session. The web realtime proxy sent it unconditionally.
 - **GA API migration** — Removed deprecated `OpenAI-Beta: realtime=v1` header from `RealtimeSession` (beta disabled May 2026). GA API uses plain `Authorization: Bearer` header.
 - **TranscriptionSession ephemeral token flow** — Rewrote connection to use REST `POST /transcription_sessions` → `client_secret` → WebSocket auth, matching the OpenAI SDK pattern. Raises clear `ConnectionError` when endpoint returns 404 (not yet available).

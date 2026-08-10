@@ -10,6 +10,19 @@ from openai_apis.transcription.ws_session import TranscriptionSession
 from openai_apis.transcription.config import TranscriptionConfig
 from openai_apis import SessionState, SessionAuditLog, VADConfig
 from openai_apis._session import InvalidStateTransition
+from tests.conftest import FAKE_CLIENT_SECRET
+
+
+@pytest.fixture(autouse=True)
+def _stub_rest_handshake(mock_transcription_rest):
+    """Stub the GA REST handshake for every test in this module.
+
+    These tests exercise the WebSocket layer; none is about the
+    ``POST /realtime/transcription_sessions`` call that ``_connect()`` makes
+    first. Without this they reach the real endpoint and fail on its 404.
+    Applied module-wide rather than per-test because every connecting test
+    needs it, and forgetting it surfaces as a confusing network error.
+    """
 
 
 class MockWebSocket:
@@ -134,8 +147,10 @@ class TestTranscriptionSessionConnect:
                 headers = call_args[1]["additional_headers"]
 
                 assert url.startswith("wss://api.openai.com/v1/realtime?model=")
-                assert headers["Authorization"] == "Bearer test-key"
-                assert headers["OpenAI-Beta"] == "realtime=v1"
+                # GA authenticates with the ephemeral client_secret from the
+                # REST handshake, never the raw API key.
+                assert headers["Authorization"] == f"Bearer {FAKE_CLIENT_SECRET}"
+                assert "OpenAI-Beta" not in headers
 
     @pytest.mark.asyncio
     async def test_connect_sends_session_update(self):
@@ -163,9 +178,11 @@ class TestTranscriptionSessionConnect:
                     None,
                 )
                 assert session_update is not None
-                assert session_update["session"]["modalities"] == ["text"]
-                assert session_update["session"]["input_audio_format"] == "pcm16"
-                assert session_update["session"]["turn_detection"] is None
+                session = session_update["session"]
+                assert session["type"] == "transcription"
+                audio_input = session["audio"]["input"]
+                assert audio_input["format"] == {"type": "audio/pcm", "rate": 24000}
+                assert "turn_detection" not in audio_input
 
     @pytest.mark.asyncio
     async def test_connect_starts_receive_loop(self):
@@ -1149,7 +1166,7 @@ class TestVADConfiguration:
                     None,
                 )
                 assert session_update is not None
-                td = session_update["session"]["turn_detection"]
+                td = session_update["session"]["audio"]["input"]["turn_detection"]
                 assert td["type"] == "server_vad"
                 assert td["threshold"] == 0.6
                 assert td["silence_duration_ms"] == 600
@@ -1181,7 +1198,7 @@ class TestVADConfiguration:
                     None,
                 )
                 assert session_update is not None
-                td = session_update["session"]["turn_detection"]
+                td = session_update["session"]["audio"]["input"]["turn_detection"]
                 assert td["type"] == "semantic_vad"
                 assert td["eagerness"] == "low"
 
@@ -1212,7 +1229,7 @@ class TestVADConfiguration:
                     None,
                 )
                 assert session_update is not None
-                assert session_update["session"]["turn_detection"] is None
+                assert "turn_detection" not in session_update["session"]["audio"]["input"]
 
     @pytest.mark.asyncio
     async def test_session_update_default_no_vad(self):
@@ -1241,7 +1258,7 @@ class TestVADConfiguration:
                     None,
                 )
                 assert session_update is not None
-                assert session_update["session"]["turn_detection"] is None
+                assert "turn_detection" not in session_update["session"]["audio"]["input"]
 
     @pytest.mark.asyncio
     async def test_update_vad_runtime(self):
@@ -1272,7 +1289,7 @@ class TestVADConfiguration:
                     msg for msg in sent_messages if msg["type"] == "session.update"
                 ]
                 assert len(vad_updates) == 2  # initial + runtime
-                td = vad_updates[1]["session"]["turn_detection"]
+                td = vad_updates[1]["session"]["audio"]["input"]["turn_detection"]
                 assert td["type"] == "semantic_vad"
                 assert td["eagerness"] == "high"
 
@@ -1367,10 +1384,10 @@ class TestSessionUpdatePayload:
                     (msg for msg in sent_messages if msg["type"] == "session.update"),
                     None,
                 )
-                assert session_update["session"]["input_audio_transcription"]["language"] == "hu"
+                assert session_update["session"]["audio"]["input"]["transcription"]["language"] == "hu"
 
     @pytest.mark.asyncio
-    async def test_session_update_model_always_whisper1(self):
+    async def test_session_update_uses_configured_model(self):
         """Transcription model in session.update is always whisper-1."""
         config = TranscriptionConfig(api_key="test-key", model="gpt-4o-mini-transcribe")
         session = TranscriptionSession(config=config)
@@ -1390,7 +1407,8 @@ class TestSessionUpdatePayload:
                     (msg for msg in sent_messages if msg["type"] == "session.update"),
                     None,
                 )
-                assert session_update["session"]["input_audio_transcription"]["model"] == "whisper-1"
+                transcription = session_update["session"]["audio"]["input"]["transcription"]
+                assert transcription["model"] == "gpt-4o-mini-transcribe"
 
     @pytest.mark.asyncio
     async def test_session_update_push_to_talk_mode(self):
@@ -1415,7 +1433,7 @@ class TestSessionUpdatePayload:
                     (msg for msg in sent_messages if msg["type"] == "session.update"),
                     None,
                 )
-                assert session_update["session"]["turn_detection"] is None
+                assert "turn_detection" not in session_update["session"]["audio"]["input"]
 
 
 class TestClassConstants:
@@ -1424,5 +1442,6 @@ class TestClassConstants:
     def test_websocket_url(self):
         assert TranscriptionSession.WEBSOCKET_URL == "wss://api.openai.com/v1/realtime"
 
-    def test_realtime_model(self):
-        assert TranscriptionSession.REALTIME_MODEL == "gpt-4o-mini-realtime-preview-2024-12-17"
+    def test_rest_base_url(self):
+        """GA mints the ephemeral token from this REST base."""
+        assert TranscriptionSession.REST_BASE_URL == "https://api.openai.com/v1/realtime"
