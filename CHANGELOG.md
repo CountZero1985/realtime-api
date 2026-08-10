@@ -7,8 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **`RealtimeConfig.to_session_update()` migrated to the GA session schema.** The beta payload was still being sent, so every realtime session was built on a schema the API no longer accepts:
+  - Session now carries the `"type": "realtime"` discriminator.
+  - Audio settings nest under `audio.input` / `audio.output` instead of the flat `input_audio_format` / `output_audio_format` / `voice` fields. Formats are objects (`{"type": "audio/pcm", "rate": 24000}`, or `audio/pcmu` / `audio/pcma` for G.711) rather than encoding strings.
+  - `turn_detection` and `input_audio_transcription` moved under `audio.input` (the latter renamed to `transcription`). An explicit JSON `null` for `turn_detection` still disables server VAD — the behaviour client-driven turn taking depends on.
+  - `modalities` → `output_modalities`, `max_response_output_tokens` → `max_output_tokens`.
+- **`RealtimeConfig.modalities` now defaults to `["audio"]`.** The GA API rejects requesting `audio` and `text` together, and audio responses already include a transcript. Constructing a config with both now raises `ValueError` rather than failing at the API.
+- **`RealtimeSession.create_response()` migrated to the GA `response.create` shape** (`output_modalities` + `audio.output`, no `temperature`). It no longer hardcodes `max_output_tokens: 1024` over the configured value.
+- **Web realtime proxy (`openai_apis/web/routes/realtime.py`) migrated to GA** — same session/response reshaping; `DEFAULT_MODEL` moved from `gpt-4o-mini-realtime-preview-2024-12-17` to `gpt-realtime-mini`.
+
+### Added
+
+- **GA realtime models in `SUPPORTED_REALTIME_MODELS`**: `gpt-realtime`, `gpt-realtime-1.5`, `gpt-realtime-2`, `gpt-realtime-2.1`, `gpt-realtime-2.1-mini`. Source: `openai-python` `types/realtime/realtime_session_create_request.py`. `gpt-realtime-translate` is deliberately **not** included — it needs a `type: "translation"` session with a different event lifecycle, which `RealtimeConfig` cannot express.
+- **GA voices** `marin` and `cedar` in `SUPPORTED_REALTIME_VOICES`.
+- **`RealtimeConfig.reasoning_effort`** (`minimal`/`low`/`medium`/`high`/`xhigh`, default `None`) → emitted as `reasoning: {"effort": ...}`. Reasoning-capable models such as `gpt-realtime-2.x` need this to trade latency against quality.
+- **`RealtimeConfig.to_audio_format()` and `.to_turn_detection()`** — the two GA sub-objects, exposed so callers can build partial `session.update` events without duplicating the mapping.
+
+### Deprecated
+
+- **`RealtimeConfig.temperature` is no longer sent.** The GA session object has no `temperature` field. The attribute is kept and still validated for backwards compatibility, but has no effect on the wire.
+
 ### Fixed
 
+- **Beta header leaked back in on reconnect.** `RealtimeSession.connect()` correctly omitted `OpenAI-Beta: realtime=v1`, but the reconnect path still sent it — so a dropped connection silently restored beta semantics mid-session. The web realtime proxy sent it unconditionally.
 - **GA API migration** — Removed deprecated `OpenAI-Beta: realtime=v1` header from `RealtimeSession` (beta disabled May 2026). GA API uses plain `Authorization: Bearer` header.
 - **TranscriptionSession ephemeral token flow** — Rewrote connection to use REST `POST /transcription_sessions` → `client_secret` → WebSocket auth, matching the OpenAI SDK pattern. Raises clear `ConnectionError` when endpoint returns 404 (not yet available).
 - **TranscriptionSession turn_detection placement** — Moved `turn_detection` from `session` level to `session.audio.input` per GA docs.

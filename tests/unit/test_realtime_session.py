@@ -98,7 +98,7 @@ class TestRealtimeConfig:
         assert config.model == "gpt-realtime-mini"
         assert config.voice == "ash"
         assert config.language == "hu"
-        assert config.modalities == ["audio", "text"]
+        assert config.modalities == ["audio"]
         assert config.temperature == 0.8
         assert config.input_audio_transcription is True
 
@@ -118,7 +118,7 @@ class TestRealtimeConfig:
     def test_post_init_modalities(self):
         """Test __post_init__ sets modalities default."""
         config = RealtimeConfig()
-        assert config.modalities == ["audio", "text"]
+        assert config.modalities == ["audio"]
 
     def test_post_init_custom_modalities(self):
         """Test __post_init__ preserves custom modalities."""
@@ -276,7 +276,8 @@ class TestRealtimeSessionLifecycle:
             sent_event = json.loads(mock_ws.sent_messages[0])
             assert sent_event["type"] == "session.update"
             assert "session" in sent_event
-            assert sent_event["session"]["voice"] == "ash"
+            assert sent_event["session"]["type"] == "realtime"
+            assert sent_event["session"]["audio"]["output"]["voice"] == "ash"
             assert sent_event["session"]["model"] == "gpt-realtime-mini"
 
     @pytest.mark.asyncio
@@ -410,7 +411,9 @@ class TestRealtimeSessionCreateResponse:
         sent_event = json.loads(mock_ws.sent_messages[1])
         assert sent_event["type"] == "response.create"
         assert "response" in sent_event
-        assert sent_event["response"]["voice"] == "ash"
+        assert sent_event["response"]["audio"]["output"]["voice"] == "ash"
+        assert sent_event["response"]["output_modalities"] == ["audio"]
+        assert "temperature" not in sent_event["response"]
 
     @pytest.mark.asyncio
     async def test_create_response_not_connected_raises(self):
