@@ -17,7 +17,7 @@ load_dotenv()
 
 # OpenAI Realtime API configuration
 OPENAI_REALTIME_URL = "wss://api.openai.com/v1/realtime"
-DEFAULT_MODEL = "gpt-4o-mini-realtime-preview-2024-12-17"
+DEFAULT_MODEL = "gpt-realtime-mini"
 
 
 def create_session_update_event(
@@ -27,23 +27,41 @@ def create_session_update_event(
     temperature: float = 0.8,
     speed: float = 1.1,
 ) -> dict:
-    """Create session.update event for OpenAI Realtime API."""
+    """Create a GA session.update event for the OpenAI Realtime API.
+
+    Args:
+        voice: Output voice.
+        language: Input transcription language (ISO-639-1).
+        instructions: System instructions.
+        temperature: Accepted for backwards compatibility and ignored — the GA
+            session object has no temperature field.
+        speed: Output speech speed (GA: audio.output.speed).
+    """
+    del temperature  # not part of the GA session schema
+    audio_format = {"type": "audio/pcm", "rate": 24000}
     return {
         "type": "session.update",
         "session": {
-            "modalities": ["text", "audio"],
+            "type": "realtime",
+            "output_modalities": ["audio"],
             "instructions": instructions,
-            "voice": voice,
-            "input_audio_format": "pcm16",
-            "output_audio_format": "pcm16",
-            "input_audio_transcription": {
-                "model": "gpt-4o-mini-transcribe",
-                "language": language,
+            "audio": {
+                "input": {
+                    "format": audio_format,
+                    "transcription": {
+                        "model": "gpt-4o-mini-transcribe",
+                        "language": language,
+                    },
+                    # Explicit null: manual turn detection, no server VAD.
+                    "turn_detection": None,
+                },
+                "output": {
+                    "format": audio_format,
+                    "voice": voice,
+                    "speed": speed,
+                },
             },
-            "turn_detection": None,  # Manual turn detection
-            "temperature": temperature,
-            "max_response_output_tokens": "inf",
-            "speed": speed,
+            "max_output_tokens": "inf",
         }
     }
 
@@ -96,9 +114,9 @@ async def realtime_websocket(
     try:
         # Connect to OpenAI Realtime API
         url = f"{OPENAI_REALTIME_URL}?model={DEFAULT_MODEL}"
+        # No OpenAI-Beta header: the beta Realtime API was disabled in May 2026.
         headers = {
             "Authorization": f"Bearer {api_key}",
-            "OpenAI-Beta": "realtime=v1",
         }
 
         async with websockets.connect(url, additional_headers=headers) as openai_ws:
@@ -217,10 +235,13 @@ async def realtime_websocket(
                             await openai_ws.send(json.dumps({
                                 "type": "response.create",
                                 "response": {
-                                    "modalities": ["text", "audio"],
-                                    "voice": voice,
-                                    "output_audio_format": "pcm16",
-                                    "temperature": temperature,
+                                    "output_modalities": ["audio"],
+                                    "audio": {
+                                        "output": {
+                                            "format": {"type": "audio/pcm", "rate": 24000},
+                                            "voice": voice,
+                                        },
+                                    },
                                 }
                             }))
                             logger.info("Audio committed, response requested")

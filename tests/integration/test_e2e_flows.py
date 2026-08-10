@@ -523,8 +523,8 @@ class TestConfigFlow:
         config = RealtimeConfig(
             voice="sage",
             language="en",
-            temperature=0.9,
-            modalities=["audio", "text"],
+            modalities=["audio"],
+            reasoning_effort="minimal",
             vad=VADConfig(mode="semantic_vad", eagerness="high"),
         )
 
@@ -543,12 +543,14 @@ class TestConfigFlow:
         assert len(update_msgs) >= 1
 
         session_data = update_msgs[0]["session"]
-        assert session_data["voice"] == "sage"
-        assert session_data["temperature"] == 0.9
-        assert session_data["modalities"] == ["audio", "text"]
-        assert session_data["turn_detection"]["type"] == "semantic_vad"
-        assert session_data["turn_detection"]["eagerness"] == "high"
-        assert session_data["input_audio_transcription"]["language"] == "en"
+        assert session_data["type"] == "realtime"
+        assert session_data["audio"]["output"]["voice"] == "sage"
+        assert session_data["output_modalities"] == ["audio"]
+        assert session_data["reasoning"] == {"effort": "minimal"}
+        turn_detection = session_data["audio"]["input"]["turn_detection"]
+        assert turn_detection["type"] == "semantic_vad"
+        assert turn_detection["eagerness"] == "high"
+        assert session_data["audio"]["input"]["transcription"]["language"] == "en"
 
     @pytest.mark.asyncio
     async def test_transcription_config_propagates_to_session_update(self):
@@ -593,7 +595,7 @@ class TestConfigFlow:
 
         sent = [json.loads(m) for m in mock_ws.sent_messages]
         update_msg = next(m for m in sent if m.get("type") == "session.update")
-        assert update_msg["session"]["turn_detection"] is None
+        assert update_msg["session"]["audio"]["input"]["turn_detection"] is None
 
     @pytest.mark.asyncio
     async def test_tool_registry_propagates_to_session_update(self):

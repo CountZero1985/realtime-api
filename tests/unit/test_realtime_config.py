@@ -22,7 +22,8 @@ class TestRealtimeConfigDefaults:
         assert config.temperature == 0.8
         assert config.max_response_output_tokens == "inf"
         assert config.input_audio_transcription is True
-        assert config.modalities == ["audio", "text"]
+        assert config.modalities == ["audio"]
+        assert config.reasoning_effort is None
         assert config.tools == []
 
     def test_inherits_base_config_fields(self, monkeypatch):
@@ -51,7 +52,7 @@ class TestRealtimeConfigDefaults:
         config1 = RealtimeConfig()
         config2 = RealtimeConfig()
         config1.modalities.append("video")  # just testing independence
-        assert config2.modalities == ["audio", "text"]
+        assert config2.modalities == ["audio"]
 
 
 class TestRealtimeConfigModelValidation:
@@ -128,7 +129,7 @@ class TestRealtimeConfigMaxTokensValidation:
 class TestRealtimeConfigModalitiesValidation:
     def test_default_modalities(self):
         config = RealtimeConfig()
-        assert config.modalities == ["audio", "text"]
+        assert config.modalities == ["audio"]
 
     def test_text_only(self):
         config = RealtimeConfig(modalities=["text"])
@@ -144,7 +145,13 @@ class TestRealtimeConfigModalitiesValidation:
 
 
 class TestRealtimeConfigToSessionUpdate:
-    """Test to_session_update() method output."""
+    """Test to_session_update() output against the GA session schema.
+
+    GA differs from the beta schema in four ways that these tests pin down:
+    a `type: "realtime"` discriminator, audio settings nested under
+    `audio.input` / `audio.output`, `modalities` renamed to
+    `output_modalities`, and no `temperature` field at all.
+    """
 
     def test_basic_structure(self):
         config = RealtimeConfig()
@@ -152,41 +159,66 @@ class TestRealtimeConfigToSessionUpdate:
         assert result["type"] == "session.update"
         assert "session" in result
 
+    def test_session_type_is_realtime(self):
+        config = RealtimeConfig()
+        result = config.to_session_update()
+        assert result["session"]["type"] == "realtime"
+
     def test_model_in_output(self):
         config = RealtimeConfig()
         result = config.to_session_update()
         assert result["session"]["model"] == "gpt-realtime-mini"
 
-    def test_voice_in_output(self):
+    def test_voice_nested_under_audio_output(self):
         config = RealtimeConfig(voice="sage")
         result = config.to_session_update()
-        assert result["session"]["voice"] == "sage"
+        assert result["session"]["audio"]["output"]["voice"] == "sage"
 
-    def test_modalities_in_output(self):
+    def test_output_modalities_in_output(self):
         config = RealtimeConfig()
         result = config.to_session_update()
-        assert result["session"]["modalities"] == ["audio", "text"]
+        assert result["session"]["output_modalities"] == ["audio"]
+        assert "modalities" not in result["session"]
 
     def test_audio_format_from_base_config(self):
         config = RealtimeConfig()
         result = config.to_session_update()
-        assert result["session"]["input_audio_format"] == "pcm16"
-        assert result["session"]["output_audio_format"] == "pcm16"
+        expected = {"type": "audio/pcm", "rate": 24000}
+        assert result["session"]["audio"]["input"]["format"] == expected
+        assert result["session"]["audio"]["output"]["format"] == expected
 
-    def test_temperature_in_output(self):
+    def test_temperature_not_sent(self):
+        """GA has no session-level temperature; the field is kept but unused."""
         config = RealtimeConfig(temperature=0.9)
         result = config.to_session_update()
-        assert result["session"]["temperature"] == 0.9
+        assert "temperature" not in result["session"]
+        assert config.temperature == 0.9
+
+    def test_no_beta_fields_remain(self):
+        """Guard against a partial migration leaving beta keys behind."""
+        config = RealtimeConfig()
+        session = config.to_session_update()["session"]
+        for beta_key in (
+            "modalities",
+            "input_audio_format",
+            "output_audio_format",
+            "temperature",
+            "max_response_output_tokens",
+            "turn_detection",
+            "input_audio_transcription",
+            "voice",
+        ):
+            assert beta_key not in session, f"beta field '{beta_key}' still sent"
 
     def test_max_tokens_inf(self):
         config = RealtimeConfig(max_response_output_tokens="inf")
         result = config.to_session_update()
-        assert result["session"]["max_response_output_tokens"] == "inf"
+        assert result["session"]["max_output_tokens"] == "inf"
 
     def test_max_tokens_integer(self):
         config = RealtimeConfig(max_response_output_tokens=4096)
         result = config.to_session_update()
-        assert result["session"]["max_response_output_tokens"] == 4096
+        assert result["session"]["max_output_tokens"] == 4096
 
     def test_instructions_included_when_set(self):
         config = RealtimeConfig(instructions="Be helpful")
@@ -199,15 +231,18 @@ class TestRealtimeConfigToSessionUpdate:
         assert "instructions" not in result["session"]
 
     def test_vad_disabled_sets_turn_detection_null(self):
+        """Explicit null under audio.input is what disables server VAD."""
         config = RealtimeConfig(vad=VADConfig(mode="disabled"))
         result = config.to_session_update()
-        assert result["session"]["turn_detection"] is None
+        audio_input = result["session"]["audio"]["input"]
+        assert "turn_detection" in audio_input
+        assert audio_input["turn_detection"] is None
 
     def test_vad_server_vad(self):
         vad = VADConfig(mode="server_vad", threshold=0.7, prefix_padding_ms=200, silence_duration_ms=800)
         config = RealtimeConfig(vad=vad)
         result = config.to_session_update()
-        td = result["session"]["turn_detection"]
+        td = result["session"]["audio"]["input"]["turn_detection"]
         assert td["type"] == "server_vad"
         assert td["threshold"] == 0.7
         assert td["prefix_padding_ms"] == 200
@@ -217,21 +252,31 @@ class TestRealtimeConfigToSessionUpdate:
         vad = VADConfig(mode="semantic_vad", eagerness="high")
         config = RealtimeConfig(vad=vad)
         result = config.to_session_update()
-        td = result["session"]["turn_detection"]
+        td = result["session"]["audio"]["input"]["turn_detection"]
         assert td["type"] == "semantic_vad"
         assert td["eagerness"] == "high"
 
     def test_input_transcription_enabled(self):
         config = RealtimeConfig(input_audio_transcription=True, language="hu")
         result = config.to_session_update()
-        iat = result["session"]["input_audio_transcription"]
-        assert iat["model"] == "whisper-1"
-        assert iat["language"] == "hu"
+        transcription = result["session"]["audio"]["input"]["transcription"]
+        assert transcription["model"] == "whisper-1"
+        assert transcription["language"] == "hu"
 
     def test_input_transcription_disabled(self):
         config = RealtimeConfig(input_audio_transcription=False)
         result = config.to_session_update()
-        assert result["session"]["input_audio_transcription"] is None
+        assert result["session"]["audio"]["input"]["transcription"] is None
+
+    def test_reasoning_omitted_when_none(self):
+        config = RealtimeConfig()
+        result = config.to_session_update()
+        assert "reasoning" not in result["session"]
+
+    def test_reasoning_effort_included_when_set(self):
+        config = RealtimeConfig(reasoning_effort="minimal")
+        result = config.to_session_update()
+        assert result["session"]["reasoning"] == {"effort": "minimal"}
 
     def test_tools_included_when_provided(self):
         tools = [{"type": "function", "name": "get_weather", "description": "Get weather"}]
@@ -245,11 +290,17 @@ class TestRealtimeConfigToSessionUpdate:
         assert "tools" not in result["session"]
 
     def test_custom_audio_format_encoding(self):
+        """G.711 maps to its own GA media type and carries no rate."""
         fmt = AudioFormat(encoding="g711_ulaw")
         config = RealtimeConfig(audio_format=fmt)
         result = config.to_session_update()
-        assert result["session"]["input_audio_format"] == "g711_ulaw"
-        assert result["session"]["output_audio_format"] == "g711_ulaw"
+        assert result["session"]["audio"]["input"]["format"] == {"type": "audio/pcmu"}
+        assert result["session"]["audio"]["output"]["format"] == {"type": "audio/pcmu"}
+
+    def test_custom_sample_rate_in_format(self):
+        config = RealtimeConfig(audio_format=AudioFormat(sample_rate=16000))
+        result = config.to_session_update()
+        assert result["session"]["audio"]["input"]["format"]["rate"] == 16000
 
 
 class TestRealtimeConfigCustomValues:

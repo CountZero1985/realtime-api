@@ -267,15 +267,22 @@ class RealtimeSession(BaseSession):
             InvalidStateTransition: If not in CONNECTED state.
         """
         self._assert_connected("create_response")
+        # GA response.create: audio settings nest under audio.output, and there
+        # is no temperature field. Everything omitted here falls back to the
+        # session config, so we only send what may legitimately differ per
+        # response.
         event = {
             "type": "response.create",
             "response": {
-                "modalities": self._config.modalities,
-                "voice": self._config.voice,
-                "output_audio_format": "pcm16",
+                "output_modalities": self._config.modalities,
+                "audio": {
+                    "output": {
+                        "format": self._config.to_audio_format(),
+                        "voice": self._config.voice,
+                    },
+                },
                 "tool_choice": "auto",
-                "temperature": self._config.temperature,
-                "max_output_tokens": 1024,
+                "max_output_tokens": self._config.max_response_output_tokens,
             },
         }
         await self._send_event(event)
@@ -678,9 +685,10 @@ class RealtimeSession(BaseSession):
             await asyncio.sleep(delay)
             try:
                 url = f"{self.WEBSOCKET_URL}?model={self._config.model}"
+                # No OpenAI-Beta header: the beta API was disabled in May 2026,
+                # and the initial connect (see connect()) already omits it.
                 headers = {
                     "Authorization": f"Bearer {self._config.api_key}",
-                    "OpenAI-Beta": "realtime=v1",
                 }
                 self._ws = await websockets.connect(url, additional_headers=headers)
 
