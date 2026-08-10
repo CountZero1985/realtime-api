@@ -9,7 +9,7 @@ class TranscriptDelta:
 
     Emitted for both user input transcription deltas
     (conversation.item.input_audio_transcription.delta) and
-    assistant response transcript deltas (response.audio_transcript.delta).
+    assistant response transcript deltas (response.output_audio_transcript.delta).
     """
     item_id: str
     delta: str
@@ -21,7 +21,7 @@ class TranscriptCompleted:
     """Final transcription for a completed speech turn.
 
     Emitted for conversation.item.input_audio_transcription.completed
-    and response.audio_transcript.done events.
+    and response.output_audio_transcript.done events.
     """
     item_id: str
     transcript: str
@@ -39,7 +39,7 @@ class ErrorEvent:
 class AudioDelta:
     """Output audio chunk from model response.
 
-    Emitted for response.audio.delta events with base64-decoded PCM16 bytes.
+    Emitted for response.output_audio.delta events with base64-decoded PCM16 bytes.
     """
     audio_bytes: bytes      # Decoded PCM16 bytes
     item_id: str
@@ -50,7 +50,7 @@ class AudioDelta:
 class AudioDone:
     """Output audio stream completion marker.
 
-    Emitted for response.audio.done events when all audio chunks
+    Emitted for response.output_audio.done events when all audio chunks
     for a response item have been delivered.
     """
     item_id: str

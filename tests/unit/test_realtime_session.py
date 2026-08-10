@@ -514,7 +514,7 @@ class TestRealtimeSessionEventHandling:
         """transcript.output emits TranscriptCompleted."""
         messages = make_handshake_messages() + [
             json.dumps({
-                "type": "response.audio_transcript.done",
+                "type": "response.output_audio_transcript.done",
                 "item_id": "item_456",
                 "transcript": "Assistant response",
             }),
@@ -540,7 +540,7 @@ class TestRealtimeSessionEventHandling:
         audio_b64 = base64.b64encode(b"\x00\x01\x02\x03").decode("ascii")
         messages = make_handshake_messages() + [
             json.dumps({
-                "type": "response.audio.delta",
+                "type": "response.output_audio.delta",
                 "delta": audio_b64,
                 "item_id": "item_audio_1",
                 "response_id": "resp_audio_1",
@@ -568,7 +568,7 @@ class TestRealtimeSessionEventHandling:
         """audio.done emits AudioDone with item_id, response_id."""
         messages = make_handshake_messages() + [
             json.dumps({
-                "type": "response.audio.done",
+                "type": "response.output_audio.done",
                 "item_id": "item_audio_1",
                 "response_id": "resp_123",
             }),
@@ -753,12 +753,12 @@ class TestRealtimeSessionEventHandling:
         """Verify output transcript delta accumulation via response.audio_transcript.delta."""
         messages = make_handshake_messages() + [
             json.dumps({
-                "type": "response.audio_transcript.delta",
+                "type": "response.output_audio_transcript.delta",
                 "item_id": "item_out_1",
                 "delta": "Szia",
             }),
             json.dumps({
-                "type": "response.audio_transcript.delta",
+                "type": "response.output_audio_transcript.delta",
                 "item_id": "item_out_1",
                 "delta": " világ",
             }),
@@ -938,9 +938,9 @@ class TestRealtimeSessionAuditLog:
         b64_1 = base64.b64encode(chunk1).decode("ascii")
         b64_2 = base64.b64encode(chunk2).decode("ascii")
         messages = make_handshake_messages() + [
-            json.dumps({"type": "response.audio.delta", "delta": b64_1, "item_id": "item_1", "response_id": "resp_1"}),
-            json.dumps({"type": "response.audio.delta", "delta": b64_2, "item_id": "item_1", "response_id": "resp_1"}),
-            json.dumps({"type": "response.audio.done", "item_id": "item_1", "response_id": "resp_1"}),
+            json.dumps({"type": "response.output_audio.delta", "delta": b64_1, "item_id": "item_1", "response_id": "resp_1"}),
+            json.dumps({"type": "response.output_audio.delta", "delta": b64_2, "item_id": "item_1", "response_id": "resp_1"}),
+            json.dumps({"type": "response.output_audio.done", "item_id": "item_1", "response_id": "resp_1"}),
         ]
         mock_ws = MockWebSocket(messages)
 
@@ -1315,7 +1315,7 @@ class TestConversationHistory:
         """Assistant transcription added to history."""
         messages = make_handshake_messages() + [
             json.dumps({
-                "type": "response.audio_transcript.done",
+                "type": "response.output_audio_transcript.done",
                 "item_id": "item_2",
                 "transcript": "Hi there!",
             }),
@@ -1339,7 +1339,7 @@ class TestConversationHistory:
                 "transcript": "Hello",
             }),
             json.dumps({
-                "type": "response.audio_transcript.done",
+                "type": "response.output_audio_transcript.done",
                 "item_id": "item_2",
                 "transcript": "Hi!",
             }),

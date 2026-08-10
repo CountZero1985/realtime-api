@@ -165,7 +165,7 @@ async def realtime_websocket(
                                 })
 
                             # Forward response audio
-                            elif event_type == "response.audio.delta":
+                            elif event_type == "response.output_audio.delta":
                                 audio_b64 = event.get("delta", "")
                                 if audio_b64:
                                     await websocket.send_json({
@@ -174,7 +174,7 @@ async def realtime_websocket(
                                     })
 
                             # Forward response text transcript
-                            elif event_type == "response.audio_transcript.delta":
+                            elif event_type == "response.output_audio_transcript.delta":
                                 text = event.get("delta", "")
                                 if text:
                                     await websocket.send_json({
@@ -182,7 +182,7 @@ async def realtime_websocket(
                                         "text": text,
                                     })
 
-                            elif event_type == "response.audio_transcript.done":
+                            elif event_type == "response.output_audio_transcript.done":
                                 transcript = event.get("transcript", "")
                                 await websocket.send_json({
                                     "type": "response_text",
@@ -190,7 +190,7 @@ async def realtime_websocket(
                                 })
 
                             # Response lifecycle
-                            elif event_type == "response.audio.done":
+                            elif event_type == "response.output_audio.done":
                                 await websocket.send_json({"type": "response_audio_done"})
 
                             elif event_type == "response.done":

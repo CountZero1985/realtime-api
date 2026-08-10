@@ -145,18 +145,18 @@ class TestRealtimeVoiceFlow:
                 "response": {"id": "resp_1"},
             }),
             json.dumps({
-                "type": "response.audio.delta",
+                "type": "response.output_audio.delta",
                 "delta": audio_chunk,
                 "item_id": "item_out_1",
                 "response_id": "resp_1",
             }),
             json.dumps({
-                "type": "response.audio.done",
+                "type": "response.output_audio.done",
                 "item_id": "item_out_1",
                 "response_id": "resp_1",
             }),
             json.dumps({
-                "type": "response.audio_transcript.done",
+                "type": "response.output_audio_transcript.done",
                 "item_id": "item_out_1",
                 "transcript": "Szia!",
             }),
