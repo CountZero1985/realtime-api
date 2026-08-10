@@ -25,7 +25,7 @@ async def transcribe_audio(
     file: UploadFile = File(..., description="Audio file (WAV, MP3, M4A, etc.)"),
     model: str = Form("gpt-4o-mini-transcribe", description="Model: gpt-4o-mini-transcribe or whisper-1"),
     language: Optional[str] = Form("hu", description="Language code (ISO-639-1), e.g., 'hu', 'en'"),
-    temperature: float = Form(0.0, description="Temperature (0.0 - 1.0)"),
+    temperature: float = Form(0.0, description="Accepted for compatibility; not currently applied"),
     prompt: Optional[str] = Form(None, description="Optional context to guide transcription"),
 ) -> TranscriptionResponse:
     """
@@ -49,11 +49,12 @@ async def transcribe_audio(
             temp_file.write(content)
             temp_path = temp_file.name
 
-        # Create config and API
+        # Create config and API.
+        # TranscriptionConfig has no temperature field, so passing the form
+        # value raised TypeError and turned every request into a 500.
         config = TranscriptionConfig(
             model=model,
             language=language if language else None,
-            temperature=temperature,
             prompt=prompt,
         )
 

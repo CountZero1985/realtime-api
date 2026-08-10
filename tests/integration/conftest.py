@@ -85,3 +85,7 @@ def temp_audit_dir():
     """Create a temporary directory for audit log export."""
     with tempfile.TemporaryDirectory() as d:
         yield Path(d)
+
+
+# `mock_transcription_rest` lives in tests/conftest.py so the unit suite can
+# use it too — both suites hit the same GA REST handshake.

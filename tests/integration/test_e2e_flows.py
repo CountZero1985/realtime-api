@@ -33,7 +33,7 @@ class TestTranscriptionFlow:
     """Scenario 1: Full transcription flow with mock WebSocket."""
 
     @pytest.mark.asyncio
-    async def test_full_transcription_flow(self, sample_audio):
+    async def test_full_transcription_flow(self, sample_audio, mock_transcription_rest):
         """Session create → audio send → delta events → completed → close."""
         # Build WebSocket messages: handshake + transcription deltas + completed
         messages = make_handshake_messages() + [
@@ -109,7 +109,7 @@ class TestTranscriptionFlow:
         assert "session.closed" in event_types
 
     @pytest.mark.asyncio
-    async def test_transcription_state_transitions(self):
+    async def test_transcription_state_transitions(self, mock_transcription_rest):
         """Verify all state transitions: CREATED → CONNECTING → CONNECTED → DISCONNECTING → CLOSED."""
         mock_ws = MockWebSocket(make_handshake_messages())
         states = []
@@ -553,7 +553,7 @@ class TestConfigFlow:
         assert session_data["audio"]["input"]["transcription"]["language"] == "en"
 
     @pytest.mark.asyncio
-    async def test_transcription_config_propagates_to_session_update(self):
+    async def test_transcription_config_propagates_to_session_update(self, mock_transcription_rest):
         """TranscriptionConfig values appear in the session.update WebSocket message."""
         config = TranscriptionConfig(
             language="en",
@@ -575,10 +575,12 @@ class TestConfigFlow:
         assert len(update_msgs) >= 1
 
         session_data = update_msgs[0]["session"]
-        assert session_data["input_audio_transcription"]["language"] == "en"
-        assert session_data["turn_detection"]["type"] == "server_vad"
-        assert session_data["turn_detection"]["threshold"] == 0.7
-        assert session_data["turn_detection"]["silence_duration_ms"] == 800
+        assert session_data["type"] == "transcription"
+        audio_input = session_data["audio"]["input"]
+        assert audio_input["transcription"]["language"] == "en"
+        assert audio_input["turn_detection"]["type"] == "server_vad"
+        assert audio_input["turn_detection"]["threshold"] == 0.7
+        assert audio_input["turn_detection"]["silence_duration_ms"] == 800
 
     @pytest.mark.asyncio
     async def test_vad_disabled_sets_null_turn_detection(self):
@@ -642,7 +644,7 @@ class TestErrorRecovery:
     """Scenario 7: Error recovery and reconnection."""
 
     @pytest.mark.asyncio
-    async def test_reconnect_on_connection_drop(self):
+    async def test_reconnect_on_connection_drop(self, mock_transcription_rest):
         """WebSocket drop triggers reconnection with exponential backoff."""
         # First connection succeeds, then drops (ConnectionClosed)
         # Second connection (reconnect) succeeds
@@ -681,7 +683,7 @@ class TestErrorRecovery:
         assert "websocket.reconnect_success" in event_types
 
     @pytest.mark.asyncio
-    async def test_reconnect_failure_emits_error(self):
+    async def test_reconnect_failure_emits_error(self, mock_transcription_rest):
         """All reconnect attempts failing emits error event."""
         first_ws = ErrorMockWebSocket(make_handshake_messages())
 
