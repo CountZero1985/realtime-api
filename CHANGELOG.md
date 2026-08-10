@@ -20,6 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`examples/translation_latency_bench.py`** — measures onset latency (commit → first translated audio) and flags the two ways a prompt-driven translator fails: reported speech, and answering a question instead of translating it. TTS-synthesised input keeps runs reproducible; real-time pacing is the default because streaming faster than real time overstates the latency. Deliberately raw WebSocket: it measures the API, so it must not inherit the client library's assumptions, and it prints the event types the API actually sent.
 - **GA realtime models in `SUPPORTED_REALTIME_MODELS`**: `gpt-realtime`, `gpt-realtime-1.5`, `gpt-realtime-2`, `gpt-realtime-2.1`, `gpt-realtime-2.1-mini`. Source: `openai-python` `types/realtime/realtime_session_create_request.py`. `gpt-realtime-translate` is deliberately **not** included — it needs a `type: "translation"` session with a different event lifecycle, which `RealtimeConfig` cannot express.
 - **GA voices** `marin` and `cedar` in `SUPPORTED_REALTIME_VOICES`.
 - **`RealtimeConfig.reasoning_effort`** (`minimal`/`low`/`medium`/`high`/`xhigh`, default `None`) → emitted as `reasoning: {"effort": ...}`. Reasoning-capable models such as `gpt-realtime-2.x` need this to trade latency against quality.
