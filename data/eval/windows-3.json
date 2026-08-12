@@ -1,0 +1,137 @@
+{
+  "reference": "Nemzetközi témáinkat egy súlyos balesettel kezdjük. Már 15 az áldozatainak száma egy aranybányában történt súlyos balesetnek a Krasznojarszki területen. További 13 embert eltűntként tartanak nyilván. Nagyszabású mentési-keresési művelet zajlik. Az eset a bánya mellett található víztározó gátjának átszakadása után történt a Krasznojarszki régióban. A helyi mentőszolgálatok közölték, hogy a bánya 14 munkását kórházba szállították. Több tucat mentő és tűzoltó, 12 egységnyi technikával dolgozik a helyszínen.",
+  "facts": [
+    "Nemzetközi témáinkat egy súlyos balesettel kezdjük.",
+    "Az áldozatok száma 15.",
+    "A baleset egy aranybányában történt.",
+    "A baleset súlyos.",
+    "A baleset a Krasznojarszki területen történt.",
+    "13 embert eltűntként tartanak nyilván.",
+    "Nagyszabású mentési-keresési művelet zajlik.",
+    "Az eset a bánya mellett található víztározó gátjának átszakadása után történt.",
+    "A víztározó gát átszakadt.",
+    "A bánya mellett egy víztározó gát található.",
+    "Az eset a Krasznojarszki régióban történt.",
+    "A helyi mentőszolgálatok közölték.",
+    "A bánya 14 munkását kórházba szállították.",
+    "Több tucat mentő dolgozik a helyszínen.",
+    "Több tucat tűzoltó dolgozik a helyszínen.",
+    "12 egységnyi technika dolgozik a helyszínen."
+  ],
+  "results": {
+    "text:8000:1000": {
+      "turns": 21,
+      "lag": {
+        "onset_p50": 2413,
+        "onset_max": 8221,
+        "lag_first": 2985,
+        "lag_p50": 24387,
+        "lag_last": 35045,
+        "drift": 32060
+      },
+      "yes": 3,
+      "partial": 7,
+      "no": 6,
+      "produced": "Szükségem lenne az időpontokra. Rendben, most fordítom: \"Mostanában ez elég zavarosnak tűnt.\" Ismétlem: \"eset, baleset\". Nem tudom pontosan, hogy mire gondol, de érdemes lehet szakemberhez fordulni vagy hivatalos információt keresni erről. Sajnálom, ezt pontosan nem tudom megerősíteni. Érdemes a hivatalos közléseket vagy megbízható hírcsatornákat keresni. Ha bármiben segíthetek, jelezd nyugodtan. És most fordítom: valószínűleg nagy méretű mentő és mentési művelet zajlik. Az incidens a következő. Rendben, most fordítom: \"A rendőrség is a helyszínen van.\" A tó partján elterülő nagy területen. Most fordítottam: \"A bűncselekmény helyszínén.\" Krasznojarszki terület. A mentőszolgálatok közölték, hogy 14. A fordítás: \"és dolgozók is\". Ezt a részt így fordítom: \"és a tűzoltók is dolgoznak ott.\" Elnézést, azt mondtad, hogy \"a tűzoltók is dolgoznak ott\". Ez a fordítás volt. Mentőegységek és tűzoltók is. A fordítás: egységek. A munka zajlik rajtuk. És most fordítom: \"és az incidens\". Hallgatok.",
+      "foreign": 0.0,
+      "checks": [
+        {
+          "verdict": "partial",
+          "evidence": "Ismétlem: \"eset, baleset\".",
+          "note": "A kimenet említi a balesetet, de nem szerepel benne, hogy 'Nemzetközi témáinkat ... kezdjük'.",
+          "fact": "Nemzetközi témáinkat egy súlyos balesettel kezdjük."
+        },
+        {
+          "verdict": "no",
+          "evidence": "A mentőszolgálatok közölték, hogy 14.",
+          "note": "A kimenet 14 áldozatról számol be, nem 15-ről.",
+          "fact": "Az áldozatok száma 15."
+        },
+        {
+          "verdict": "no",
+          "evidence": "\"A tó partján elterülő nagy területen. ... Krasznojarszki terület.\"",
+          "note": "A kimenet nem említi, hogy a baleset aranybányában történt.",
+          "fact": "A baleset egy aranybányában történt."
+        },
+        {
+          "verdict": "partial",
+          "evidence": "\"Ismétlem: \\\"eset, baleset\\\".\"; \"valószínűleg nagy méretű mentő és mentési művelet zajlik.\"; \"Mentőegységek és tűzoltók is.\"",
+          "note": "A kimenet említi az esetet és a nagy mentési műveletet, de nem állítja egyértelműen, hogy a baleset súlyos.",
+          "fact": "A baleset súlyos."
+        },
+        {
+          "verdict": "yes",
+          "evidence": "Ismétlem: \"eset, baleset\".\nKrasznojarszki terület.",
+          "note": "",
+          "fact": "A baleset a Krasznojarszki területen történt."
+        },
+        {
+          "verdict": "no",
+          "evidence": "A mentőszolgálatok közölték, hogy 14.",
+          "note": "A kimenet 14-et említ, nem a megadott 13; a számoknak pontosan egyezniük kell.",
+          "fact": "13 embert eltűntként tartanak nyilván."
+        },
+        {
+          "verdict": "yes",
+          "evidence": "valószínűleg nagy méretű mentő és mentési művelet zajlik.",
+          "note": "",
+          "fact": "Nagyszabású mentési-keresési művelet zajlik."
+        },
+        {
+          "verdict": "no",
+          "evidence": "null",
+          "note": "A kimenet nem említi a bánya melletti víztározó gátjának átszakadását, sem a bánya vagy a gát átszakadásának tényét.",
+          "fact": "Az eset a bánya mellett található víztározó gátjának átszakadása után történt."
+        },
+        {
+          "verdict": "no",
+          "evidence": "Szükségem lenne az időpontokra. Rendben, most fordítom: \"Mostanában ez elég zavarosnak tűnt.\" Ismétlem: \"eset, baleset\". Nem tudom pontosan, hogy mire gondol, de érdemes lehet szakemberhez fordulni vagy hivatalos információt keresni erről. Sajnálom, ezt pontosan nem tudom megerősíteni. Érdemes a hivatalos közléseket vagy megbízható hírcsatornákat keresni. Ha bármiben segíthetek, jelezd nyugodtan. És most fordítom: valószínűleg nagy méretű mentő és mentési művelet zajlik. Az incidens a következő. Rendben, most fordítom: \"A rendőrség is a helyszínen van.\" A tó partján elterülő nagy területen. Most fordítottam: \"A bűncselekmény helyszínén.\" Krasznojarszki terület. A mentőszolgálatok közölték, hogy 14. A fordítás: \"és dolgozók is\". Ezt a részt így fordítom: \"és a tűzoltók is dolgoznak ott.\" Elnézést, azt mondtad, hogy \"a tűzoltók is dolgoznak ott\". Ez a fordítás volt. Mentőegységek és tűzoltók is. A fordítás: egységek. A munka zajlik rajtuk. És most fordítom: \"és az incidens\". Hallgatok.",
+          "note": "A kimenet nem tartalmazza, hogy \"A víztározó gát átszakadt.\"",
+          "fact": "A víztározó gát átszakadt."
+        },
+        {
+          "verdict": "no",
+          "evidence": "A tó partján elterülő nagy területen.",
+          "note": "A kimenet nem említi a bányát vagy a víztározó gátat.",
+          "fact": "A bánya mellett egy víztározó gát található."
+        },
+        {
+          "verdict": "partial",
+          "evidence": "Krasznojarszki terület.",
+          "note": "A helyszín neve szerepel, de a megfogalmazás ('terület' vs 'régióban') nem pontosan egyezik a TÉNNYEL.",
+          "fact": "Az eset a Krasznojarszki régióban történt."
+        },
+        {
+          "verdict": "yes",
+          "evidence": "Krasznojarszki terület. A mentőszolgálatok közölték, hogy 14.",
+          "note": "",
+          "fact": "A helyi mentőszolgálatok közölték."
+        },
+        {
+          "verdict": "partial",
+          "evidence": "A mentőszolgálatok közölték, hogy 14. A fordítás: \"és dolgozók is\".",
+          "note": "Megjelenik a '14' és 'dolgozók', de nincs szó a bányáról vagy a kórházba szállításról.",
+          "fact": "A bánya 14 munkását kórházba szállították."
+        },
+        {
+          "verdict": "partial",
+          "evidence": "valószínűleg nagy méretű mentő és mentési művelet zajlik. ... Mentőegységek és tűzoltók is.",
+          "note": "A kimenet említi, hogy mentőegységek dolgoznak, de nem állítja pontosan, hogy \"több tucat\".",
+          "fact": "Több tucat mentő dolgozik a helyszínen."
+        },
+        {
+          "verdict": "partial",
+          "evidence": "Ezt a részt így fordítom: \"és a tűzoltók is dolgoznak ott.\" Elnézést, azt mondtad, hogy \"a tűzoltók is dolgoznak ott\". Mentőegységek és tűzoltók is.",
+          "note": "A kimenet említi, hogy tűzoltók dolgoznak a helyszínen, de nem tartalmazza a 'több tucat' mennyiségi információt.",
+          "fact": "Több tucat tűzoltó dolgozik a helyszínen."
+        },
+        {
+          "verdict": "partial",
+          "evidence": "A mentőszolgálatok közölték, hogy 14. A fordítás: egységek. A munka zajlik rajtuk. Mentőegységek és tűzoltók is.",
+          "note": "Megjelenik, hogy 'egységek' dolgoznak a helyszínen, de a konkrét szám 12 nem szerepel (helyette 14 említődik).",
+          "fact": "12 egységnyi technika dolgozik a helyszínen."
+        }
+      ]
+    }
+  }
+}

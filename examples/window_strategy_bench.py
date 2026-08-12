@@ -10,8 +10,18 @@ Strategies compared on the same audio, with the app's own prompt:
   fixed:N        commit every N ms — what the app does today at 4000
   overlap:N:M    N ms windows that re-send the previous M ms, so a cut through
                  the middle of a clause still reaches the model with its run-up
-  text:N         a parallel transcription session finds sentence ends in the
-                 incoming text, and the cut lands there instead of on a timer
+  text:MAX:PROBE a parallel response-free session transcribes every PROBE ms
+                 and the cut lands where a sentence ends
+
+                 MEASURED: this fails, and the reason is worth keeping. A
+                 transcriber given an isolated 1 s chunk returns text ending
+                 in a full stop, whatever the audio actually was — so every
+                 probe looks like a sentence end and the cut lands every
+                 1-2 s. 21 turns, 3/16 facts, lag p50 24 s, and the model
+                 dropped into assistant mode on the fragments. Detecting real
+                 sentence ends needs transcription with context, which the
+                 commit-based route cannot give, and the streaming route
+                 needs server VAD — which does not fire on this material.
 
 Two things are measured, because they trade against each other:
 
@@ -124,6 +134,77 @@ class _Turn:
     @property
     def output_s(self) -> float:
         return self.audio_bytes / (SAMPLE_RATE * BYTES_PER_SAMPLE)
+
+
+async def _sentence_cuts(pcm: bytes, key: str, probe_ms: int, max_ms: int) -> list[int]:
+    """Hol vannak a mondathatárok — egy külön, VÁLASZ NÉLKÜLI sessionből.
+
+    A szerveroldali szegmentálás ezen az anyagon nem indul el (nincs szünet),
+    ezért a transzkripciós sessiont is időzítő lépteti — de sűrűn (`probe_ms`)
+    és **`response.create` nélkül**, tehát csak átiratot kérünk, választ nem.
+    Ez adja meg, hol ér véget egy mondat; a fordító session ott vág.
+
+    Visszaadja a vágási pontokat bájtban. `max_ms` a felső korlát: ha a
+    beszélő nem tesz pontot, valahol akkor is vágni kell.
+    """
+    url = f"wss://api.openai.com/v1/realtime?model={MODEL}"
+    chunk = SAMPLE_RATE * BYTES_PER_SAMPLE * CHUNK_MS // 1000
+    probe = SAMPLE_RATE * BYTES_PER_SAMPLE * probe_ms // 1000
+    cap = SAMPLE_RATE * BYTES_PER_SAMPLE * max_ms // 1000
+
+    texts: list[str] = []
+    done = asyncio.Event()
+
+    async with websockets.connect(
+        url, additional_headers={"Authorization": f"Bearer {key}"}, max_size=None
+    ) as ws:
+        await ws.recv()
+        await ws.send(json.dumps(_session(1.0)))
+
+        async def reader() -> None:
+            while not done.is_set():
+                try:
+                    ev = json.loads(await asyncio.wait_for(ws.recv(), timeout=25))
+                except (asyncio.TimeoutError, websockets.ConnectionClosed):
+                    return
+                if "input_audio_transcription.completed" in ev.get("type", ""):
+                    texts.append(ev.get("transcript", ""))
+
+        task = asyncio.create_task(reader())
+
+        cuts: list[int] = []
+        pos = 0
+        since_cut = 0
+        while pos < len(pcm):
+            end = min(len(pcm), pos + probe)
+            for off in range(pos, end, chunk):
+                await ws.send(
+                    json.dumps(
+                        {
+                            "type": "input_audio_buffer.append",
+                            "audio": base64.b64encode(pcm[off : off + chunk]).decode(),
+                        }
+                    )
+                )
+                await asyncio.sleep(0.002)  # itt nem a valós idő a lényeg
+            seen = len(texts)
+            # Commit VÁLASZ NÉLKÜL: csak az átiratot kérjük.
+            await ws.send(json.dumps({"type": "input_audio_buffer.commit"}))
+            pos = end
+            since_cut += probe
+            for _ in range(60):  # legfeljebb ~3 s várakozás az átiratra
+                if len(texts) > seen:
+                    break
+                await asyncio.sleep(0.05)
+            latest = texts[-1] if texts else ""
+            if (SENTENCE_END.search(latest.strip()[-1:]) or since_cut >= cap) and pos < len(pcm):
+                cuts.append(pos)
+                since_cut = 0
+
+        done.set()
+        task.cancel()
+
+    return cuts
 
 
 async def _run(pcm: bytes, key: str, plan: list[tuple[int, int]], speed: float) -> dict:
@@ -246,6 +327,15 @@ def _plan(strategy: str, total_bytes: int) -> list[tuple[int, int]]:
     sys.exit(f"ismeretlen strategia: {strategy}")
 
 
+def _plan_from_cuts(cuts: list[int], total_bytes: int) -> list[tuple[int, int]]:
+    plan, prev = [], 0
+    for c in cuts + [total_bytes]:
+        if c > prev:
+            plan.append((c - prev, 0))
+            prev = c
+    return plan
+
+
 async def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("input_wav", type=Path)
@@ -274,7 +364,14 @@ async def main() -> None:
     results = {}
     for strat in args.strategies:
         print(f"--- {strat} ---")
-        run = await _run(pcm, key, _plan(strat, len(pcm)), args.speed)
+        if strat.startswith("text:"):
+            _, max_ms, probe_ms = strat.split(":")
+            cuts = await _sentence_cuts(pcm, key, int(probe_ms), int(max_ms))
+            plan = _plan_from_cuts(cuts, len(pcm))
+            print(f"    mondathatarok: {[round(c / (SAMPLE_RATE * BYTES_PER_SAMPLE), 1) for c in cuts]} s")
+        else:
+            plan = _plan(strat, len(pcm))
+        run = await _run(pcm, key, plan, args.speed)
         if run.get("error"):
             print(f"    hiba: {run['error']}")
             continue
