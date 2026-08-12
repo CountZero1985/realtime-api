@@ -58,6 +58,30 @@ foglalj össze, ne kommentálj. Csak a magyar fordítást add vissza."""
 
 SENTENCE_SPLIT = re.compile(r"(?<=[.!?…])\s+")
 
+FACT_EXTRACT_PROMPT = """Bontsd atomi tényállításokra az alábbi magyar szöveget.
+
+Egy tény = egy önállóan igaz vagy hamis állítás. Minden számot, nevet,
+helyszínt, időpontot és eseményt külön tényként vegyél fel. Ne értelmezz, ne
+egészíts ki, ne vonj össze.
+
+Csak JSON tömböt adj vissza, sztringekkel, más semmit.
+Példa: ["Az áldozatok száma 15.", "A baleset aranybányában történt."]"""
+
+FACT_CHECK_PROMPT = """Egy fordítógép kimenetét ellenőrzöl.
+
+Megkapsz egy TÉNYT a helyes fordításból, és a gép TELJES kimenetét. Döntsd el,
+hogy a tény megjelenik-e a kimenetben.
+
+Szigorú szabályok:
+- A számoknak, neveknek, helyszíneknek PONTOSAN egyezniük kell. Ha egy szám
+  más szerepben jelenik meg (pl. áldozatszámból dátum lett), az NEM egyezés.
+- A megfogalmazás eltérhet; csak a tartalom számít.
+- Ha a tény részben van meg (pl. az esemény igen, de a helyszín hibás),
+  az "partial".
+
+Csak JSON objektumot adj vissza:
+{"verdict": "yes" | "partial" | "no", "evidence": "a kimenet releváns része vagy null", "note": "egy rövid mondat, ha nem yes"}"""
+
 
 def _sentences(text: str) -> list[str]:
     return [s.strip() for s in SENTENCE_SPLIT.split(text.strip()) if s.strip()]
@@ -88,6 +112,44 @@ async def _translate(client: AsyncOpenAI, text: str) -> str:
         ],
     )
     return resp.output_text.strip()
+
+
+async def _extract_facts(client: AsyncOpenAI, text: str) -> list[str]:
+    """Atomi tényekre bontja a referenciát.
+
+    A mondatszintű hasonlóság **fogalmazást** mér, nem információt: a mért
+    felvételen a „15 halálos áldozat" -> „augusztus 15-én" ferdítés 0.66-ot
+    kapott, vagyis átment — pedig egy hírfordítónál ez a legsúlyosabb hiba.
+    Tényenként vizsgálva ez bukás, aminek lennie is kell.
+    """
+    resp = await client.responses.create(
+        model=TRANSLATE_MODEL,
+        input=[
+            {"role": "system", "content": FACT_EXTRACT_PROMPT},
+            {"role": "user", "content": text},
+        ],
+    )
+    raw = resp.output_text.strip()
+    raw = re.sub(r"^```(?:json)?|```$", "", raw, flags=re.MULTILINE).strip()
+    return [str(f) for f in json.loads(raw)]
+
+
+async def _check_fact(client: AsyncOpenAI, fact: str, produced: str) -> dict:
+    resp = await client.responses.create(
+        model=TRANSLATE_MODEL,
+        input=[
+            {"role": "system", "content": FACT_CHECK_PROMPT},
+            {"role": "user", "content": f"TÉNY:\n{fact}\n\nKIMENET:\n{produced}"},
+        ],
+    )
+    raw = resp.output_text.strip()
+    raw = re.sub(r"^```(?:json)?|```$", "", raw, flags=re.MULTILINE).strip()
+    try:
+        out = json.loads(raw)
+    except json.JSONDecodeError:
+        out = {"verdict": "no", "evidence": None, "note": f"elemzési hiba: {raw[:80]}"}
+    out["fact"] = fact
+    return out
 
 
 async def _embed(client: AsyncOpenAI, texts: list[str]) -> list[list[float]]:
@@ -134,7 +196,14 @@ async def main() -> None:
     print("3/4  az app kimenetenek atirata...")
     produced = await _transcribe(client, args.output_wav, "hu")
 
-    print("4/4  osszevetes...\n")
+    print("4/5  tenyek kibontasa a referenciabol...")
+    facts = await _extract_facts(client, reference)
+    print(f"     {len(facts)} teny")
+
+    print("5/5  tenyenkenti ellenorzes...\n")
+    checks = await asyncio.gather(
+        *(_check_fact(client, f, produced) for f in facts)
+    )
     ref_sentences = _sentences(reference)
     got_sentences = _sentences(produced)
     ref_vecs = await _embed(client, ref_sentences)
@@ -178,7 +247,24 @@ async def main() -> None:
     print(produced + "\n")
 
     print("=" * 76)
-    print("MONDATONKENT")
+    print("TENYENKENT — ez a lenyeg: atjott-e az INFORMACIO")
+    print("=" * 76)
+    mark = {"yes": "  ok ", "partial": "RESZB", "no": "HIANY"}
+    for c in checks:
+        print(f"{mark.get(c['verdict'], '  ?  ')}  {c['fact']}")
+        if c["verdict"] != "yes" and c.get("note"):
+            print(f"         {c['note']}")
+    yes = sum(1 for c in checks if c["verdict"] == "yes")
+    part = sum(1 for c in checks if c["verdict"] == "partial")
+    no = sum(1 for c in checks if c["verdict"] == "no")
+    print()
+    print(f"TENY-FEDETTSEG  {yes}/{len(checks)} pontos"
+          f"  ·  {part} reszleges  ·  {no} hianyzik"
+          f"  ->  {100 * yes // max(len(checks), 1)}%")
+    print()
+
+    print("=" * 76)
+    print("MONDATONKENT (fogalmazas-kozelseg — NEM informaciomeres)")
     print("=" * 76)
     missing = 0
     for i, m in enumerate(matches, 1):
@@ -210,6 +296,7 @@ async def main() -> None:
                     "produced": produced,
                     "matches": matches,
                     "missing": missing,
+                    "facts": checks,
                 },
                 ensure_ascii=False,
                 indent=2,
