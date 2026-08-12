@@ -161,8 +161,22 @@ async def synthesize(text: str, key: str, voice: str = "alloy") -> bytes:
         return resp.content
 
 
-def session_update(prompt: str) -> dict:
-    """GA session config for client-driven turn taking."""
+def _audio_output(audio_format: dict, speed: float | None) -> dict:
+    """Build audio.output, omitting `speed` when unset so the server default applies."""
+    out = {"format": audio_format, "voice": "alloy"}
+    if speed is not None:
+        out["speed"] = speed
+    return out
+
+
+def session_update(prompt: str, speed: float | None = None) -> dict:
+    """GA session config for client-driven turn taking.
+
+    ``speed`` compresses the spoken output. It matters for more than comfort:
+    if the translation takes longer to say than the source phrase lasted, a
+    continuous stream falls further behind on every turn (see the project's
+    HIBA-002). Speed is the cheapest lever against that drift.
+    """
     audio_format = {"type": "audio/pcm", "rate": SAMPLE_RATE}
     return {
         "type": "session.update",
@@ -179,13 +193,14 @@ def session_update(prompt: str) -> dict:
                     # translation mid-sentence.
                     "turn_detection": None,
                 },
-                "output": {"format": audio_format, "voice": "alloy"},
+                "output": _audio_output(audio_format, speed),
             },
         },
     }
 
 
-async def measure_one(model: str, text: str, prompt: str, key: str, realtime: bool) -> dict:
+async def measure_one(model: str, text: str, prompt: str, key: str, realtime: bool,
+                      speed: float | None = None) -> dict:
     """Run a single utterance through the API and time the response onset."""
     pcm = await synthesize(text, key)
     url = f"wss://api.openai.com/v1/realtime?model={model}"
@@ -204,7 +219,7 @@ async def measure_one(model: str, text: str, prompt: str, key: str, realtime: bo
         if first.get("type") == "error":
             return {"error": first["error"].get("message", "unknown"), "source": text}
 
-        await ws.send(json.dumps(session_update(prompt)))
+        await ws.send(json.dumps(session_update(prompt, speed)))
 
         chunk = SAMPLE_RATE * BYTES_PER_SAMPLE * CHUNK_MS // 1000
         for offset in range(0, len(pcm), chunk):
@@ -251,6 +266,11 @@ async def measure_one(model: str, text: str, prompt: str, key: str, realtime: bo
         "translation": translation,
         "onset_ms": round(onset * 1000) if onset is not None else None,
         "output_audio_s": round(audio_bytes / (SAMPLE_RATE * BYTES_PER_SAMPLE), 2),
+        # >1.0 means the translation takes longer to say than the source did:
+        # on a continuous stream the lag then grows on every turn.
+        "duration_ratio": round(
+            (audio_bytes / (SAMPLE_RATE * BYTES_PER_SAMPLE)) / max(len(pcm) / (SAMPLE_RATE * BYTES_PER_SAMPLE), 0.01), 2
+        ),
         "reported_speech_suspected": any(m in lowered for m in REPORTED_SPEECH_MARKERS),
         "answered_instead_of_translated": looks_like_an_answer(text, translation),
         "error": error,
@@ -267,6 +287,22 @@ def summarize(results: list[dict]) -> None:
     ordered = sorted(onsets)
     p95 = ordered[min(len(ordered) - 1, int(len(ordered) * 0.95))]
     print("\n" + "=" * 72)
+
+    # The drift metric: spoken-output duration relative to the source phrase.
+    # Above 1.0 the translation cannot keep up with a continuous speaker, and
+    # the lag compounds turn after turn no matter how fast the onset is.
+    ratios = [r["duration_ratio"] for r in results if r.get("duration_ratio")]
+    if ratios:
+        ordered_r = sorted(ratios)
+        med_r = ordered_r[len(ordered_r) // 2]
+        over = sum(1 for x in ratios if x > 1.0)
+        print(
+            f"HOSSZARANY (kimenet/forras)  med={med_r:.2f}  "
+            f"min={ordered_r[0]:.2f}  max={ordered_r[-1]:.2f}  "
+            f"| {over}/{len(ratios)} futas hosszabb a forrasnal"
+        )
+        if med_r > 1.0:
+            print("  ⚠ a median >1.0: folyamatos beszednel a lemaradas nő")
     print(
         f"ONSET  n={len(ordered)}  "
         f"min={ordered[0]}  median={round(statistics.median(ordered))}  "
@@ -311,6 +347,9 @@ async def main() -> None:
     parser.add_argument("--sentences-file", type=Path,
                         help="Source utterances, one per line as 'lang<TAB>text' "
                              "(or just text, defaulting to 'xx'). Lines starting with # are ignored.")
+    parser.add_argument("--speed", type=float,
+                        help="Spoken output speed (e.g. 1.15). Omit for the server default. "
+                             "Compressing the output is the cheapest lever against lag drift.")
     parser.add_argument("--json", type=Path, help="Write raw results to this path")
     args = parser.parse_args()
 
@@ -326,7 +365,8 @@ async def main() -> None:
     for lang, text in sentences:
         print(f"\n[{lang.upper()}] {text}")
         for run in range(1, args.runs + 1):
-            result = await measure_one(args.model, text, prompt, key, realtime=not args.fast)
+            result = await measure_one(args.model, text, prompt, key,
+                                       realtime=not args.fast, speed=args.speed)
             result["lang"] = lang
             results.append(result)
             if result.get("error"):
@@ -337,7 +377,8 @@ async def main() -> None:
                 flag = "  ⚠ ANSWERED, did not translate"
             elif result["reported_speech_suspected"]:
                 flag = "  ⚠ reported speech?"
-            print(f"  #{run}  onset {result['onset_ms']:>4} ms  |  {result['translation']}{flag}")
+            print(f"  #{run}  onset {result['onset_ms']:>4} ms  "
+                  f"hossz×{result['duration_ratio']:.2f}  |  {result['translation']}{flag}")
 
     summarize(results)
 
