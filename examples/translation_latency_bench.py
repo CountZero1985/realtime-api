@@ -210,6 +210,7 @@ async def measure_one(model: str, text: str, prompt: str, key: str, realtime: bo
     heard: list[str] = []
     onset: float | None = None
     audio_bytes = 0
+    deltas: list[tuple[float, float]] = []
     error: str | None = None
 
     async with websockets.connect(
@@ -250,6 +251,11 @@ async def measure_one(model: str, text: str, prompt: str, key: str, realtime: bo
                 if onset is None:
                     onset = time.perf_counter() - committed_at
                 audio_bytes += len(base64.b64decode(event.get("delta", "")))
+                # (arrival time, audio seconds available so far) — feeds the
+                # jitter-buffer simulation below.
+                deltas.append(
+                    (time.perf_counter(), audio_bytes / (SAMPLE_RATE * BYTES_PER_SAMPLE))
+                )
             elif kind.endswith("output_audio_transcript.delta") or kind == "response.audio_transcript.delta":
                 transcript.append(event.get("delta", ""))
             elif "input_audio_transcription.completed" in kind:
@@ -271,10 +277,48 @@ async def measure_one(model: str, text: str, prompt: str, key: str, realtime: bo
         "duration_ratio": round(
             (audio_bytes / (SAMPLE_RATE * BYTES_PER_SAMPLE)) / max(len(pcm) / (SAMPLE_RATE * BYTES_PER_SAMPLE), 0.01), 2
         ),
+        # Does the audio arrive fast enough to be played without gaps?
+        **{f"jitter_{k}": v for k, v in simulate_jitter_buffer(deltas).items()},
         "reported_speech_suspected": any(m in lowered for m in REPORTED_SPEECH_MARKERS),
         "answered_instead_of_translated": looks_like_an_answer(text, translation),
         "error": error,
         "event_types": sorted(seen_events),
+    }
+
+
+def simulate_jitter_buffer(
+    deltas: list[tuple[float, float]], prebuffer_s: float = 0.06
+) -> dict:
+    """Replay the arrival timestamps against the app's own jitter buffer.
+
+    The Flutter client (`app/lib/realtime/jitter_buffer.dart`) prebuffers
+    `prebuffer_s` of audio, then plays at real time. If the server delivers
+    audio slower than it is consumed, the buffer empties mid-utterance and
+    playback drops out — audible as a glitch, not as slowness.
+
+    Returns the minimum buffer depth reached (negative == underrun) and the
+    delivery rate in audio-seconds produced per wall-clock second. Below 1.0
+    the server cannot sustain real-time playback at all.
+    """
+    if len(deltas) < 2:
+        return {"min_depth_s": None, "underran": None, "delivery_rate": None}
+
+    t_first, _ = deltas[0]
+    t_last, total_audio_s = deltas[-1]
+    wall = t_last - t_first
+    delivery_rate = (total_audio_s / wall) if wall > 0 else float("inf")
+
+    # Playback starts once prebuffer_s of audio has accumulated.
+    start = next((t for t, cum in deltas if cum >= prebuffer_s), None)
+    if start is None:  # whole utterance is shorter than the prebuffer
+        return {"min_depth_s": None, "underran": False, "delivery_rate": round(delivery_rate, 2)}
+
+    # Depth at each arrival: audio available minus audio already played.
+    min_depth = min(cum - (t - start) for t, cum in deltas if t >= start)
+    return {
+        "min_depth_s": round(min_depth, 3),
+        "underran": min_depth < 0,
+        "delivery_rate": round(delivery_rate, 2),
     }
 
 
@@ -308,6 +352,25 @@ def summarize(results: list[dict]) -> None:
         f"min={ordered[0]}  median={round(statistics.median(ordered))}  "
         f"p95={p95}  max={ordered[-1]} ms"
     )
+
+    # Glitch metric: can the 60 ms jitter buffer sustain gapless playback?
+    # A negative depth means the client runs out of audio mid-sentence, which
+    # is heard as a dropout — a different fault from "the voice is too fast".
+    depths = [r["jitter_min_depth_s"] for r in results if r.get("jitter_min_depth_s") is not None]
+    rates = [r["jitter_delivery_rate"] for r in results if r.get("jitter_delivery_rate")]
+    if depths:
+        under = sum(1 for d in depths if d < 0)
+        print(
+            f"JITTER (60 ms elopuffer)  min_melyseg med={statistics.median(depths):+.3f} s  "
+            f"legrosszabb={min(depths):+.3f} s  | {under}/{len(depths)} futas alulcsordult"
+        )
+        if rates:
+            print(
+                f"  szallitasi rata  med={statistics.median(rates):.2f}x valos ido  "
+                f"(min={min(rates):.2f}x)  — 1.0 alatt a lejatszas nem tarthato"
+            )
+        if under:
+            print("  ⚠ alulcsordulas: a hang lyukas lesz, ez NEM a sebesseg hibaja")
 
     answered = [r for r in results if r.get("answered_instead_of_translated")]
     if answered:
