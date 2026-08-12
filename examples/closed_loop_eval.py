@@ -306,4 +306,5 @@ async def main() -> None:
         print(f"\nnyers eredmeny: {args.json}")
 
 
-asyncio.run(main())
+if __name__ == "__main__":
+    asyncio.run(main())
