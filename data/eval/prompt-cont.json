@@ -1,0 +1,165 @@
+{
+  "reference": "Nemzetközi témáinkat egy súlyos balesettel kezdjük. Már 15 az áldozatainak száma egy aranybányában történt súlyos balesetnek a Krasznojarszki területen. További 13 embert eltűntként tartanak nyilván. Nagyszabású mentési-keresési művelet zajlik. Az eset a bánya mellett található víztározó gátjának átszakadása után történt a Krasznojarszki régióban. A helyi mentőszolgálatok közölték, hogy a bánya 14 munkását kórházba szállították. Több tucat mentő és tűzoltó, 12 egységnyi technikával dolgozik a helyszínen.",
+  "facts": [
+    "Nemzetközi témáinkat egy súlyos balesettel kezdjük.",
+    "Az áldozatok száma 15.",
+    "A baleset egy aranybányában történt.",
+    "A baleset súlyos.",
+    "A baleset a Krasznojarszki területen történt.",
+    "13 embert eltűntként tartanak nyilván.",
+    "Nagyszabású mentési-keresési művelet zajlik.",
+    "Az eset a bánya mellett található víztározó gátjának átszakadása után történt.",
+    "A víztározó gát átszakadt.",
+    "A bánya mellett egy víztározó gát található.",
+    "Az eset a Krasznojarszki régióban történt.",
+    "A helyi mentőszolgálatok közölték.",
+    "A bánya 14 munkását kórházba szállították.",
+    "Több tucat mentő dolgozik a helyszínen.",
+    "Több tucat tűzoltó dolgozik a helyszínen.",
+    "12 egységnyi technika dolgozik a helyszínen."
+  ],
+  "results": {
+    "fixed:8000": {
+      "turns": 5,
+      "lag": {
+        "onset_p50": 1382,
+        "onset_max": 1754,
+        "lag_first": 8363,
+        "lag_p50": 8142,
+        "lag_last": 5682,
+        "drift": -2681
+      },
+      "yes": 12,
+      "partial": 3,
+      "no": 1,
+      "produced": "Nemzetközi hírek: elkezdjük a súlyos balesettel, 15-en már áldozatok egy aranybányabeli súlyos incidensben Krasznogorszokban. Körülbelül 13 embert nyilvánítottak eltűntnek, folyik a széleskörű mentő- és kereső akció. Az incidens egy... Az a gát a tó mellett, amely a bánya közelében van a Krasznojarszki régióban, a helyi mentőszolgálatok közölték, hogy 14 munkás... kórházba szállítottak. Tízek mentős és tűzoltó dolgozik 12 egység technikai eszközzel a baleset helyszínén. Kérlek, mondd el, ha van még valami, amit fordítsak.",
+      "heard": "Международните теми започваме с тежък инцидент. Петнайсет вече са жертвите на тежки инцидент в златодобивна мина в Красноярск. Други тринадесет души са обявени за издирване. Тече мащабна спасително-издирвателна операция. Инцидентът се е случил след скъс... Скаленна стена на язовир, разположен край мината в Красноярския регион. Местните спасителни служби заявиха, че 14 от работниците в мината Десетки спасители и пожарникари с дванадесет единици техника работят на мястото на инцидента.",
+      "foreign": 0.0,
+      "per_turn": [
+        {
+          "src_end": 8.0,
+          "onset_ms": 999,
+          "output_s": 7.36
+        },
+        {
+          "src_end": 16.0,
+          "onset_ms": 975,
+          "output_s": 7.1
+        },
+        {
+          "src_end": 24.0,
+          "onset_ms": 1382,
+          "output_s": 8.15
+        },
+        {
+          "src_end": 32.0,
+          "onset_ms": 1560,
+          "output_s": 6.58
+        },
+        {
+          "src_end": 37.52,
+          "onset_ms": 1754,
+          "output_s": 3.06
+        }
+      ],
+      "checks": [
+        {
+          "verdict": "yes",
+          "evidence": "Nemzetközi hírek: elkezdjük a súlyos balesettel,",
+          "note": "",
+          "fact": "Nemzetközi témáinkat egy súlyos balesettel kezdjük."
+        },
+        {
+          "verdict": "yes",
+          "evidence": "15-en már áldozatok egy aranybányabeli súlyos incidensben Krasznogorszokban.",
+          "note": "",
+          "fact": "Az áldozatok száma 15."
+        },
+        {
+          "verdict": "yes",
+          "evidence": "15-en már áldozatok egy aranybányabeli súlyos incidensben Krasznogorszokban.",
+          "note": "",
+          "fact": "A baleset egy aranybányában történt."
+        },
+        {
+          "verdict": "yes",
+          "evidence": "Nemzetközi hírek: elkezdjük a súlyos balesettel, 15-en már áldozatok egy aranybányabeli súlyos incidensben Krasznogorszokban.",
+          "note": "",
+          "fact": "A baleset súlyos."
+        },
+        {
+          "verdict": "yes",
+          "evidence": "Az a gát a tó mellett, amely a bánya közelében van a Krasznojarszki régióban, a helyi mentőszolgálatok közölték...",
+          "note": "",
+          "fact": "A baleset a Krasznojarszki területen történt."
+        },
+        {
+          "verdict": "yes",
+          "evidence": "Körülbelül 13 embert nyilvánítottak eltűntnek, folyik a széleskörű mentő- és kereső akció.",
+          "note": "",
+          "fact": "13 embert eltűntként tartanak nyilván."
+        },
+        {
+          "verdict": "yes",
+          "evidence": "Körülbelül 13 embert nyilvánítottak eltűntnek, folyik a széleskörű mentő- és kereső akció.",
+          "note": "",
+          "fact": "Nagyszabású mentési-keresési művelet zajlik."
+        },
+        {
+          "verdict": "partial",
+          "evidence": "Az a gát a tó mellett, amely a bánya közelében van a Krasznojarszki régióban, a helyi mentőszolgálatok közölték, hogy 14 munkás... kórházba szállítottak.",
+          "note": "A gát és a bánya közelsége szerepel a kimenetben, de nincs megemlítve, hogy a gát átszakadt.",
+          "fact": "Az eset a bánya mellett található víztározó gátjának átszakadása után történt."
+        },
+        {
+          "verdict": "no",
+          "evidence": "Az a gát a tó mellett, amely a bánya közelében van a Krasznojarszki régióban, a helyi mentőszolgálatok közölték, hogy 14 munkás... kórházba szállítottak.",
+          "note": "A szöveg említi a gátat, de nem állítja, hogy átszakadt.",
+          "fact": "A víztározó gát átszakadt."
+        },
+        {
+          "verdict": "partial",
+          "evidence": "Az a gát a tó mellett, amely a bánya közelében van a Krasznojarszki régióban",
+          "note": "A szöveg a gátot a tó mellett és a bánya közelében említi, nem egyértelműen 'a bánya mellett'.",
+          "fact": "A bánya mellett egy víztározó gát található."
+        },
+        {
+          "verdict": "yes",
+          "evidence": "Az a gát a tó mellett, amely a bánya közelében van a Krasznojarszki régióban, a helyi mentőszolgálatok közölték, hogy 14 munkás... kórházba szállítottak.",
+          "note": "",
+          "fact": "Az eset a Krasznojarszki régióban történt."
+        },
+        {
+          "verdict": "yes",
+          "evidence": "az a gát a tó mellett, amely a bánya közelében van a Krasznojarszki régióban, a helyi mentőszolgálatok közölték, hogy 14 munkás... kórházba szállítottak.",
+          "note": "",
+          "fact": "A helyi mentőszolgálatok közölték."
+        },
+        {
+          "verdict": "yes",
+          "evidence": "a helyi mentőszolgálatok közölték, hogy 14 munkás... kórházba szállítottak.",
+          "note": "",
+          "fact": "A bánya 14 munkását kórházba szállították."
+        },
+        {
+          "verdict": "yes",
+          "evidence": "Tízek mentős és tűzoltó dolgozik 12 egység technikai eszközzel a baleset helyszínén.",
+          "note": "",
+          "fact": "Több tucat mentő dolgozik a helyszínen."
+        },
+        {
+          "verdict": "partial",
+          "evidence": "Tízek mentős és tűzoltó dolgozik 12 egység technikai eszközzel a baleset helyszínén.",
+          "note": "A kimenet említi tűzoltókat és tömeges számra utal ('Tízek'), de a tény konkrét „több tucat” megfogalmazása/numerikája nem pontosan egyezik, és medikusok is szerepelnek.",
+          "fact": "Több tucat tűzoltó dolgozik a helyszínen."
+        },
+        {
+          "verdict": "yes",
+          "evidence": "Tízek mentős és tűzoltó dolgozik 12 egység technikai eszközzel a baleset helyszínén.",
+          "note": "",
+          "fact": "12 egységnyi technika dolgozik a helyszínen."
+        }
+      ]
+    }
+  }
+}

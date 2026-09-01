@@ -1,0 +1,243 @@
+{
+  "reference": "Nemzetközi témáinkat egy súlyos balesettel kezdjük. Már 15 az áldozatainak száma egy aranybányában történt súlyos balesetnek a Krasznojarszki területen. További 13 embert eltűntként tartanak nyilván. Nagyszabású mentési-keresési művelet zajlik. Az eset a bánya mellett található víztározó gátjának átszakadása után történt a Krasznojarszki régióban. A helyi mentőszolgálatok közölték, hogy a bánya 14 munkását kórházba szállították. Több tucat mentő és tűzoltó, 12 egységnyi technikával dolgozik a helyszínen.",
+  "facts": [
+    "Nemzetközi témáinkat egy súlyos balesettel kezdjük.",
+    "Az áldozatok száma 15.",
+    "A baleset egy aranybányában történt.",
+    "A baleset súlyos.",
+    "A baleset a Krasznojarszki területen történt.",
+    "13 embert eltűntként tartanak nyilván.",
+    "Nagyszabású mentési-keresési művelet zajlik.",
+    "Az eset a bánya mellett található víztározó gátjának átszakadása után történt.",
+    "A víztározó gát átszakadt.",
+    "A bánya mellett egy víztározó gát található.",
+    "Az eset a Krasznojarszki régióban történt.",
+    "A helyi mentőszolgálatok közölték.",
+    "A bánya 14 munkását kórházba szállították.",
+    "Több tucat mentő dolgozik a helyszínen.",
+    "Több tucat tűzoltó dolgozik a helyszínen.",
+    "12 egységnyi technika dolgozik a helyszínen."
+  ],
+  "a": {
+    "produced": "Nemzetközi híreket indítunk a súlyos incidenssel.Azt mondja, hogy hány áldozata van a krasnói aranybányabeli súlyos balesetnek?Tehát hároman meghaltak, még tizenhárman eltűntek, jól értem?Azt mondta, hogy nyomozást indítottak, és az incidens okait vizsgálják.Azt kérdezte, hogy mi a helyzet a krasznoyarszki régióban lévő bányászati gát leomlásával.A mentőszolgálatok azt nyilatkozták, hogy 14 munkás van bent.Úgy értem, hogy legalább tíz embert kórházba szállítottak, és több tucat mentő és tűzoltó dolgozik a helyszínen.Azt kérdezi, hogy körülbelül harminc egység dolgozik-e a helyszínen?Én most nem hallom pontosan a kérdést, tudna egy kicsit tisztázni? Mi az, amit pontosan szeretne tudni?Rendben, figyelek, kérem, mondja el, hogy mire van szüksége.",
+    "heard": "Международните теми започваме с тежък инцидент. Най-сед вече са жертвите на тежкия инцидент в златодобивна мина в Красноярск. Други тринадесет души са обявени за издирване, тече мащабна операция. hlas pasitou s deviatou operáciou. Incidenta cézur склона на стена на язовир, разположен край мината в Красноярския регион. Местните спасителни служби заявиха, че четиринайсет от работниците в мината... са хоспитализирани. Десетки спасители и пожарникари с 12... Десет единици техника работят на мястото на инцидента.",
+    "turns": 10,
+    "output_s": 44.3,
+    "error": null,
+    "score": {
+      "checks": [
+        {
+          "verdict": "yes",
+          "evidence": "Nemzetközi híreket indítunk a súlyos incidenssel.",
+          "note": "",
+          "fact": "Nemzetközi témáinkat egy súlyos balesettel kezdjük."
+        },
+        {
+          "verdict": "no",
+          "evidence": "\"Tehát hároman meghaltak, még tizenhárman eltűntek...\" valamint \"A mentőszolgálatok azt nyilatkozták, hogy 14 munkás van bent.\"",
+          "note": "A kimenetben nincs sem \"15\", sem \"tizenöt\"; szereplő számok 3, 13 és 14, amelyek nem egyeznek a ténnyel.",
+          "fact": "Az áldozatok száma 15."
+        },
+        {
+          "verdict": "yes",
+          "evidence": "hány áldozata van a krasnói aranybányabeli súlyos balesetnek?",
+          "note": "",
+          "fact": "A baleset egy aranybányában történt."
+        },
+        {
+          "verdict": "yes",
+          "evidence": "Nemzetközi híreket indítunk a súlyos incidenssel.",
+          "note": "",
+          "fact": "A baleset súlyos."
+        },
+        {
+          "verdict": "partial",
+          "evidence": "Azt kérdezte, hogy mi a helyzet a krasznoyarszki régióban lévő bányászati gát leomlásával.",
+          "note": "A szöveg említi a krasznoyarszki régiót, de a helynév írásmódja nem pontosan egyezik a 'Krasznojarszki' formával.",
+          "fact": "A baleset a Krasznojarszki területen történt."
+        },
+        {
+          "verdict": "yes",
+          "evidence": "Tehát hároman meghaltak, még tizenhárman eltűntek, jól értem?",
+          "note": "",
+          "fact": "13 embert eltűntként tartanak nyilván."
+        },
+        {
+          "verdict": "yes",
+          "evidence": "\"A mentőszolgálatok azt nyilatkozták, hogy 14 munkás van bent.\" \"legalább tíz embert kórházba szállítottak, és több tucat mentő és tűzoltó dolgozik a helyszínen.\" \"körülbelül harminc egység dolgozik-e a helyszínen?\"",
+          "note": "",
+          "fact": "Nagyszabású mentési-keresési művelet zajlik."
+        },
+        {
+          "verdict": "partial",
+          "evidence": "Azt kérdezte, hogy mi a helyzet a krasznoyarszki régióban lévő bányászati gát leomlásával.",
+          "note": "A kimenet említi a bányászati gát leomlását, de nem pontosan fejti ki, hogy ez a bánya melletti víztározó gátjának átszakadásaként történt, illetve nem szerepel kifejezetten, hogy az eset az átszakadás után történt.",
+          "fact": "Az eset a bánya mellett található víztározó gátjának átszakadása után történt."
+        },
+        {
+          "verdict": "partial",
+          "evidence": "Azt kérdezte, hogy mi a helyzet a krasznoyarszki régióban lévő bányászati gát leomlásával.",
+          "note": "A kimenet említi a gát leomlását, de 'bányászati gát'-ról van szó, nem kifejezetten 'víztározó gát'-ról.",
+          "fact": "A víztározó gát átszakadt."
+        },
+        {
+          "verdict": "partial",
+          "evidence": "Azt kérdezte, hogy mi a helyzet a krasznoyarszki régióban lévő bányászati gát leomlásával.",
+          "note": "A kimenet említi a bányászati gátat, de nem állítja egyértelműen, hogy a gát a bánya mellett található.",
+          "fact": "A bánya mellett egy víztározó gát található."
+        },
+        {
+          "verdict": "partial",
+          "evidence": "Azt kérdezte, hogy mi a helyzet a krasznoyarszki régióban lévő bányászati gát leomlásával.",
+          "note": "A helyszín szerepel, de a név eltérő átiratban ('krasznoyarszki' vs 'Krasznojarszki').",
+          "fact": "Az eset a Krasznojarszki régióban történt."
+        },
+        {
+          "verdict": "yes",
+          "evidence": "A mentőszolgálatok azt nyilatkozták, hogy 14 munkás van bent.",
+          "note": "",
+          "fact": "A helyi mentőszolgálatok közölték."
+        },
+        {
+          "verdict": "partial",
+          "evidence": "\"A mentőszolgálatok azt nyilatkozták, hogy 14 munkás van bent.\"; \"Úgy értem, hogy legalább tíz embert kórházba szállítottak\"",
+          "note": "Megjelenik a '14 munkás' és a 'kórházba szállítottak' állítás is, de a szöveg szerint a 14 munkás 'bent van', és a kórházba szállítottak száma 'legalább tíz', nem pontosan 14.",
+          "fact": "A bánya 14 munkását kórházba szállították."
+        },
+        {
+          "verdict": "yes",
+          "evidence": "Úgy értem, hogy legalább tíz embert kórházba szállítottak, és több tucat mentő és tűzoltó dolgozik a helyszínen.",
+          "note": "",
+          "fact": "Több tucat mentő dolgozik a helyszínen."
+        },
+        {
+          "verdict": "yes",
+          "evidence": "és több tucat mentő és tűzoltó dolgozik a helyszínen.",
+          "note": "",
+          "fact": "Több tucat tűzoltó dolgozik a helyszínen."
+        },
+        {
+          "verdict": "no",
+          "evidence": "Úgy értem, hogy legalább tíz embert kórházba szállítottak, és több tucat mentő és tűzoltó dolgozik a helyszínen. Azt kérdezi, hogy körülbelül harminc egység dolgozik-e a helyszínen?",
+          "note": "A kimenet nem említi pontosan a 12 egységet (helyette 'több tucat' és 'körülbelül harminc' szerepel).",
+          "fact": "12 egységnyi technika dolgozik a helyszínen."
+        }
+      ],
+      "yes": 8,
+      "partial": 6,
+      "no": 2,
+      "pct": 50
+    }
+  },
+  "b": {
+    "produced": "",
+    "heard": "",
+    "turns": 0,
+    "output_s": 0.0,
+    "error": null,
+    "score": {
+      "checks": [
+        {
+          "verdict": "no",
+          "evidence": "null",
+          "note": "A kimenet üres, a megadott tény nem található benne.",
+          "fact": "Nemzetközi témáinkat egy súlyos balesettel kezdjük."
+        },
+        {
+          "verdict": "no",
+          "evidence": null,
+          "note": "A kimenet üres, így az áldozatok számára vonatkozó tény nem szerepel.",
+          "fact": "Az áldozatok száma 15."
+        },
+        {
+          "verdict": "no",
+          "evidence": null,
+          "note": "A kimenet üres; a tény (baleset egy aranybányában) nem szerepel.",
+          "fact": "A baleset egy aranybányában történt."
+        },
+        {
+          "verdict": "no",
+          "evidence": null,
+          "note": "A kimenet üres, a tény nem szerepel.",
+          "fact": "A baleset súlyos."
+        },
+        {
+          "verdict": "no",
+          "evidence": null,
+          "note": "A kimenet üres, a tény nem szerepel benne.",
+          "fact": "A baleset a Krasznojarszki területen történt."
+        },
+        {
+          "verdict": "no",
+          "evidence": "null",
+          "note": "A kimenet üres, a tény (13 embert eltűntként tartanak nyilván) nem szerepel.",
+          "fact": "13 embert eltűntként tartanak nyilván."
+        },
+        {
+          "verdict": "no",
+          "evidence": null,
+          "note": "A kimenet üres; a tény nincs benne.",
+          "fact": "Nagyszabású mentési-keresési művelet zajlik."
+        },
+        {
+          "verdict": "no",
+          "evidence": null,
+          "note": "A kimenet üres, a tény nem szerepel.",
+          "fact": "Az eset a bánya mellett található víztározó gátjának átszakadása után történt."
+        },
+        {
+          "verdict": "no",
+          "evidence": null,
+          "note": "A kimenet üres; a tény nem szerepel.",
+          "fact": "A víztározó gát átszakadt."
+        },
+        {
+          "verdict": "no",
+          "evidence": null,
+          "note": "A kimenet üres, a tény nem szerepel.",
+          "fact": "A bánya mellett egy víztározó gát található."
+        },
+        {
+          "verdict": "no",
+          "evidence": "null",
+          "note": "A kimenet üres, így a tény nem szerepel benne.",
+          "fact": "Az eset a Krasznojarszki régióban történt."
+        },
+        {
+          "verdict": "no",
+          "evidence": null,
+          "note": "A kimenet üres, a megadott tény nem szerepel.",
+          "fact": "A helyi mentőszolgálatok közölték."
+        },
+        {
+          "verdict": "no",
+          "evidence": null,
+          "note": "A kimenet üres, így a tény nem szerepel benne.",
+          "fact": "A bánya 14 munkását kórházba szállították."
+        },
+        {
+          "verdict": "no",
+          "evidence": null,
+          "note": "A kimenet üres, a tény nem található meg benne.",
+          "fact": "Több tucat mentő dolgozik a helyszínen."
+        },
+        {
+          "verdict": "no",
+          "evidence": null,
+          "note": "A kimenet üres, a tény nem szerepel.",
+          "fact": "Több tucat tűzoltó dolgozik a helyszínen."
+        },
+        {
+          "verdict": "no",
+          "evidence": null,
+          "note": "A kimenet üres, ezért a tény (12 egységnyi technika a helyszínen) nem szerepel benne.",
+          "fact": "12 egységnyi technika dolgozik a helyszínen."
+        }
+      ],
+      "yes": 0,
+      "partial": 0,
+      "no": 16,
+      "pct": 0
+    }
+  }
+}
