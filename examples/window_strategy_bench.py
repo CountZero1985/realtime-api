@@ -99,7 +99,14 @@ def _load_pcm(path: Path) -> bytes:
         return w.readframes(w.getnframes())
 
 
-def _session(speed: float) -> dict:
+def _session(speed: float, source_language: str | None = None) -> dict:
+    """GA session payload. `source_language` pins input transcription (ISO-639-1).
+
+    Isolated fragments are not enough to identify a language: in the 4 s run,
+    Slovak words appeared in a Bulgarian recording. Pinning is the cheapest
+    candidate fix, and the only way to know is to change this one field and
+    leave everything else identical.
+    """
     fmt = {"type": "audio/pcm", "rate": SAMPLE_RATE}
     return {
         "type": "session.update",
@@ -110,7 +117,10 @@ def _session(speed: float) -> dict:
             "audio": {
                 "input": {
                     "format": fmt,
-                    "transcription": {"model": "gpt-4o-mini-transcribe"},
+                    "transcription": {
+                        "model": "gpt-4o-mini-transcribe",
+                        **({"language": source_language} if source_language else {}),
+                    },
                     "turn_detection": None,  # explicit null: a kliens vág
                 },
                 "output": {"format": fmt, "voice": "alloy", "speed": speed},
@@ -207,11 +217,18 @@ async def _sentence_cuts(pcm: bytes, key: str, probe_ms: int, max_ms: int) -> li
     return cuts
 
 
-async def _run(pcm: bytes, key: str, plan: list[tuple[int, int]], speed: float) -> dict:
+async def _run(
+    pcm: bytes,
+    key: str,
+    plan: list[tuple[int, int]],
+    speed: float,
+    source_language: str | None = None,
+) -> dict:
     """`plan` = [(kuldendo_bajt, atfedes_bajt)] vagasonkent, sorrendben."""
     url = f"wss://api.openai.com/v1/realtime?model={MODEL}"
     chunk = SAMPLE_RATE * BYTES_PER_SAMPLE * CHUNK_MS // 1000
     turns: list[_Turn] = []
+    heard: list[str] = []
     done = asyncio.Event()
 
     async with websockets.connect(
@@ -220,7 +237,7 @@ async def _run(pcm: bytes, key: str, plan: list[tuple[int, int]], speed: float) 
         first = json.loads(await ws.recv())
         if first.get("type") == "error":
             return {"error": first["error"].get("message")}
-        await ws.send(json.dumps(_session(speed)))
+        await ws.send(json.dumps(_session(speed, source_language)))
 
         t0 = time.perf_counter()
         cursor = 0  # melyik turnhoz tartozik a beerkezo delta
@@ -242,6 +259,8 @@ async def _run(pcm: bytes, key: str, plan: list[tuple[int, int]], speed: float) 
                 elif kind.endswith("output_audio_transcript.delta"):
                     if cursor < len(turns):
                         turns[cursor].text.append(ev.get("delta", ""))
+                elif "input_audio_transcription.completed" in kind:
+                    heard.append(ev.get("transcript", ""))
                 elif kind == "response.done":
                     cursor += 1
                 elif kind == "error":
@@ -283,6 +302,7 @@ async def _run(pcm: bytes, key: str, plan: list[tuple[int, int]], speed: float) 
     return {
         "turns": turns,
         "produced": " ".join("".join(t.text).strip() for t in turns).strip(),
+        "heard": " ".join(heard).strip(),
         "error": None,
     }
 
@@ -324,6 +344,15 @@ def _plan(strategy: str, total_bytes: int) -> list[tuple[int, int]]:
         step, ov = b(int(rest[0])), b(int(rest[1]))
         n = (total_bytes + step - 1) // step
         return [(step, 0 if i == 0 else ov) for i in range(n)]
+    if kind == "mixed":
+        # Elso ablak nagyobb, a tobbi kisebb. A kerdes: segit-e, ha a rendszer
+        # "belendul" egy hosszu ablakkal, es utana rovidebbekkel dolgozik.
+        first, rest_ms = b(int(rest[0])), b(int(rest[1]))
+        plan = [(first, 0)]
+        remaining = max(0, total_bytes - first)
+        n = (remaining + rest_ms - 1) // rest_ms
+        plan += [(rest_ms, 0)] * n
+        return plan
     sys.exit(f"ismeretlen strategia: {strategy}")
 
 
@@ -341,6 +370,11 @@ async def main() -> None:
     ap.add_argument("input_wav", type=Path)
     ap.add_argument("--strategies", nargs="+", default=["fixed:4000", "fixed:6000", "fixed:8000"])
     ap.add_argument("--speed", type=float, default=1.15)
+    ap.add_argument(
+        "--source-language",
+        default=None,
+        help="a bemeneti transzkripcio nyelve (ISO-639-1); alapbol automatikus",
+    )
     ap.add_argument("--reference-json", type=Path)
     ap.add_argument("--json", type=Path)
     args = ap.parse_args()
@@ -348,6 +382,8 @@ async def main() -> None:
     key = os.environ["OPENAI_API_KEY"]
     client = AsyncOpenAI(api_key=key)
     pcm = _load_pcm(args.input_wav)
+    lang = args.source_language or "automatikus"
+    print(f"nyelv : {lang}")
     print(f"forras: {args.input_wav.name}  ({len(pcm) / (SAMPLE_RATE * BYTES_PER_SAMPLE):.1f}s)")
 
     if args.reference_json and args.reference_json.is_file():
@@ -371,7 +407,7 @@ async def main() -> None:
             print(f"    mondathatarok: {[round(c / (SAMPLE_RATE * BYTES_PER_SAMPLE), 1) for c in cuts]} s")
         else:
             plan = _plan(strat, len(pcm))
-        run = await _run(pcm, key, plan, args.speed)
+        run = await _run(pcm, key, plan, args.speed, args.source_language)
         if run.get("error"):
             print(f"    hiba: {run['error']}")
             continue
@@ -386,7 +422,18 @@ async def main() -> None:
             "partial": part,
             "no": len(checks) - yes - part,
             "produced": run["produced"],
+            "heard": run.get("heard", ""),
             "foreign": round(_foreign_ratio(run["produced"]), 3),
+            "per_turn": [
+                {
+                    "src_end": round(x.src_end, 2),
+                    "onset_ms": round((x.first_delta - x.src_end) * 1000)
+                    if x.first_delta is not None
+                    else None,
+                    "output_s": round(x.output_s, 2),
+                }
+                for x in run["turns"]
+            ],
             "checks": checks,
         }
         print(f"    {len(run['turns'])} fordulo · tenyek {yes}/{len(facts)} · "
