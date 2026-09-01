@@ -99,6 +99,19 @@ def _load_pcm(path: Path) -> bytes:
         return w.readframes(w.getnframes())
 
 
+PROMPT_CONTINUATION = """Egy tolmácsgép hangja vagy. Amit hallasz, azt add vissza magyarul. Semmi mást.
+A kimeneted MINDIG magyar. Soha ne válaszolj a hallottakra, ne kommentáld.
+
+A hangot darabokban kapod, és egy darab a mondat közepén is véget érhet.
+Ilyenkor CSAK a befejezett gondolatokat fordítsd le. A félbemaradt utolsó
+tagmondatot hagyd ki — a folytatását a következő darabban fogod hallani, és
+akkor fordítsd le egyben. Soha ne találd ki, hogyan folytatódott volna.
+Amit egyszer már lefordítottál, ne mondd el újra.
+"""
+
+ACTIVE_PROMPT = APP_PROMPT
+
+
 def _session(speed: float, source_language: str | None = None) -> dict:
     """GA session payload. `source_language` pins input transcription (ISO-639-1).
 
@@ -113,7 +126,7 @@ def _session(speed: float, source_language: str | None = None) -> dict:
         "session": {
             "type": "realtime",
             "output_modalities": ["audio"],
-            "instructions": APP_PROMPT,
+            "instructions": ACTIVE_PROMPT,
             "audio": {
                 "input": {
                     "format": fmt,
@@ -375,9 +388,21 @@ async def main() -> None:
         default=None,
         help="a bemeneti transzkripcio nyelve (ISO-639-1); alapbol automatikus",
     )
+    ap.add_argument(
+        "--prompt",
+        choices=["app", "continuation"],
+        default="app",
+        help="'continuation': a modell hagyja a felbevagott zaro tagmondatot "
+        "a kovetkezo darabra — a vagast RA bizzuk, nem az idozitore",
+    )
     ap.add_argument("--reference-json", type=Path)
     ap.add_argument("--json", type=Path)
     args = ap.parse_args()
+
+    global ACTIVE_PROMPT
+    if args.prompt == "continuation":
+        ACTIVE_PROMPT = PROMPT_CONTINUATION
+    print(f"prompt: {args.prompt}")
 
     key = os.environ["OPENAI_API_KEY"]
     client = AsyncOpenAI(api_key=key)
