@@ -1,0 +1,145 @@
+{
+  "reference": "Nemzetközi témáinkat egy súlyos balesettel kezdjük. Már 15 az áldozatainak száma egy aranybányában történt súlyos balesetnek a Krasznojarszki területen. További 13 embert eltűntként tartanak nyilván. Nagyszabású mentési-keresési művelet zajlik. Az eset a bánya mellett található víztározó gátjának átszakadása után történt a Krasznojarszki régióban. A helyi mentőszolgálatok közölték, hogy a bánya 14 munkását kórházba szállították. Több tucat mentő és tűzoltó, 12 egységnyi technikával dolgozik a helyszínen.",
+  "facts": [
+    "Nemzetközi témáinkat egy súlyos balesettel kezdjük.",
+    "Az áldozatok száma 15.",
+    "A baleset egy aranybányában történt.",
+    "A baleset súlyos.",
+    "A baleset a Krasznojarszki területen történt.",
+    "13 embert eltűntként tartanak nyilván.",
+    "Nagyszabású mentési-keresési művelet zajlik.",
+    "Az eset a bánya mellett található víztározó gátjának átszakadása után történt.",
+    "A víztározó gát átszakadt.",
+    "A bánya mellett egy víztározó gát található.",
+    "Az eset a Krasznojarszki régióban történt.",
+    "A helyi mentőszolgálatok közölték.",
+    "A bánya 14 munkását kórházba szállították.",
+    "Több tucat mentő dolgozik a helyszínen.",
+    "Több tucat tűzoltó dolgozik a helyszínen.",
+    "12 egységnyi technika dolgozik a helyszínen."
+  ],
+  "results": {
+    "fixed:40000": {
+      "turns": 1,
+      "lag": {
+        "onset_p50": 1571,
+        "onset_max": 1571,
+        "lag_first": 23893,
+        "lag_p50": 23893,
+        "lag_last": 23893,
+        "drift": 0
+      },
+      "yes": 13,
+      "partial": 3,
+      "no": 0,
+      "produced": "Nemzetközi hírek: kezdünk a súlyos incidenssel: 15 már a súlyos bányabaleset áldozata a Krasznojarszki régióban, további 13 embert keresnek. Nagyszabású mentő-kereső akció folyamatban. Az incidens akkor történt, amikor egy gát átszakadt egy víztározón, ami a bánya közelében volt. A helyi mentőszolgálatok szerint 14 bányász kórházba került. 10 mentő és tűzoltó dolgozik a helyszínen 12 műszaki egységgel.",
+      "heard": "Международните теми започваме с тежък инцидент. Петнайсет вече са жертвите на тежки инцидент златодобивна мина в Красноярския край. Други тринайсет души са обявени за издирване. Тече мащабна спасително-издирвателна операция. Инцидентът се е случил след скъсване на стена на язовир, разположен край мината в Красноярския регион. Местните спасителни служби заявиха, че четиринайсет от работниците в мината са хоспитализирани. Десетки спасители и пожарникари с дванадесет единици техника работят на мястото на инцидента.",
+      "foreign": 0.0,
+      "per_turn": [
+        {
+          "src_end": 37.52,
+          "onset_ms": 1571,
+          "output_s": 22.32
+        }
+      ],
+      "checks": [
+        {
+          "verdict": "yes",
+          "evidence": "Nemzetközi hírek: kezdünk a súlyos incidenssel:",
+          "note": "",
+          "fact": "Nemzetközi témáinkat egy súlyos balesettel kezdjük."
+        },
+        {
+          "verdict": "yes",
+          "evidence": "15 már a súlyos bányabaleset áldozata a Krasznojarszki régióban",
+          "note": "",
+          "fact": "Az áldozatok száma 15."
+        },
+        {
+          "verdict": "partial",
+          "evidence": "\"súlyos bányabaleset\"; \"a bánya közelében volt\"",
+          "note": "A szöveg említi, hogy bányában történt, de nem említi, hogy aranybánya.",
+          "fact": "A baleset egy aranybányában történt."
+        },
+        {
+          "verdict": "yes",
+          "evidence": "kezdünk a súlyos incidenssel: 15 már a súlyos bányabaleset áldozata a Krasznojarszki régióban",
+          "note": "",
+          "fact": "A baleset súlyos."
+        },
+        {
+          "verdict": "yes",
+          "evidence": "15 már a súlyos bányabaleset áldozata a Krasznojarszki régióban",
+          "note": "",
+          "fact": "A baleset a Krasznojarszki területen történt."
+        },
+        {
+          "verdict": "yes",
+          "evidence": "további 13 embert keresnek.",
+          "note": "",
+          "fact": "13 embert eltűntként tartanak nyilván."
+        },
+        {
+          "verdict": "yes",
+          "evidence": "Nagyszabású mentő-kereső akció folyamatban.",
+          "note": "",
+          "fact": "Nagyszabású mentési-keresési művelet zajlik."
+        },
+        {
+          "verdict": "yes",
+          "evidence": "Az incidens akkor történt, amikor egy gát átszakadt egy víztározón, ami a bánya közelében volt.",
+          "note": "",
+          "fact": "Az eset a bánya mellett található víztározó gátjának átszakadása után történt."
+        },
+        {
+          "verdict": "yes",
+          "evidence": "Az incidens akkor történt, amikor egy gát átszakadt egy víztározón, ami a bánya közelében volt.",
+          "note": "",
+          "fact": "A víztározó gát átszakadt."
+        },
+        {
+          "verdict": "yes",
+          "evidence": "Az incidens akkor történt, amikor egy gát átszakadt egy víztározón, ami a bánya közelében volt.",
+          "note": "",
+          "fact": "A bánya mellett egy víztározó gát található."
+        },
+        {
+          "verdict": "yes",
+          "evidence": "15 már a súlyos bányabaleset áldozata a Krasznojarszki régióban, további 13 embert keresnek.",
+          "note": "",
+          "fact": "Az eset a Krasznojarszki régióban történt."
+        },
+        {
+          "verdict": "yes",
+          "evidence": "A helyi mentőszolgálatok szerint 14 bányász kórházba került.",
+          "note": "",
+          "fact": "A helyi mentőszolgálatok közölték."
+        },
+        {
+          "verdict": "yes",
+          "evidence": "A helyi mentőszolgálatok szerint 14 bányász kórházba került.",
+          "note": "",
+          "fact": "A bánya 14 munkását kórházba szállították."
+        },
+        {
+          "verdict": "partial",
+          "evidence": "10 mentő és tűzoltó dolgozik a helyszínen 12 műszaki egységgel.",
+          "note": "A kimenetben szerepel, hogy mentők dolgoznak a helyszínen, de a megadott szám (10) nem felel meg a 'több tucat' állításnak.",
+          "fact": "Több tucat mentő dolgozik a helyszínen."
+        },
+        {
+          "verdict": "partial",
+          "evidence": "10 mentő és tűzoltó dolgozik a helyszínen 12 műszaki egységgel.",
+          "note": "A kimenet említi, hogy tűzoltók dolgoznak a helyszínen, de megadott számuk (10) nem egyezik a 'több tucat' állítással.",
+          "fact": "Több tucat tűzoltó dolgozik a helyszínen."
+        },
+        {
+          "verdict": "yes",
+          "evidence": "10 mentő és tűzoltó dolgozik a helyszínen 12 műszaki egységgel.",
+          "note": "",
+          "fact": "12 egységnyi technika dolgozik a helyszínen."
+        }
+      ]
+    }
+  }
+}

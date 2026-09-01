@@ -188,7 +188,14 @@ async def _sentence_cuts(pcm: bytes, key: str, probe_ms: int, max_ms: int) -> li
             while not done.is_set():
                 try:
                     ev = json.loads(await asyncio.wait_for(ws.recv(), timeout=25))
-                except (asyncio.TimeoutError, websockets.ConnectionClosed):
+                except asyncio.TimeoutError:
+                    # NEM kilepes: `turn_detection: null` mellett commitig
+                    # semmi nem erkezik, es egy hosszu ablaknal a kuldes maga
+                    # tovabb tart a timeoutnal. Kilepve az olvaso meghalna,
+                    # mielott a valasz megjon — a `fixed:40000` merese igy
+                    # adott ures kimenetet.
+                    continue
+                except websockets.ConnectionClosed:
                     return
                 if "input_audio_transcription.completed" in ev.get("type", ""):
                     texts.append(ev.get("transcript", ""))
@@ -242,6 +249,8 @@ async def _run(
     chunk = SAMPLE_RATE * BYTES_PER_SAMPLE * CHUNK_MS // 1000
     turns: list[_Turn] = []
     heard: list[str] = []
+    completed: set[int] = set()
+    seen: dict[str, int] = {}
     done = asyncio.Event()
 
     async with websockets.connect(
@@ -260,9 +269,15 @@ async def _run(
             while not done.is_set():
                 try:
                     ev = json.loads(await asyncio.wait_for(ws.recv(), timeout=25))
-                except (asyncio.TimeoutError, websockets.ConnectionClosed):
+                except asyncio.TimeoutError:
+                    # NEM kilepes: `turn_detection: null` mellett commitig
+                    # semmi nem erkezik, es egy hosszu ablaknal maga a kuldes
+                    # tovabb tart a timeoutnal.
+                    continue
+                except websockets.ConnectionClosed:
                     return
                 kind = ev.get("type", "")
+                seen[kind] = seen.get(kind, 0) + 1
                 if kind.endswith("output_audio.delta"):
                     if cursor < len(turns):
                         t = turns[cursor]
@@ -276,6 +291,7 @@ async def _run(
                     heard.append(ev.get("transcript", ""))
                 elif kind == "response.done":
                     cursor += 1
+                    completed.add(cursor)
                 elif kind == "error":
                     print(f"    ! {ev['error'].get('message')}")
 
@@ -308,10 +324,19 @@ async def _run(
             if pos >= len(pcm):
                 break
 
-        await asyncio.sleep(15)  # a hatralevo valaszok befutasa
+        # A hatralevo valaszok befutasa. NEM fix varakozas: egy 37 masodperces
+        # darab forditasa tovabb tart, mint egy 8 masodperces, es fix 15 s
+        # mellett a `fixed:40000` meres ures kimenetet adott — ugy nezett ki,
+        # mintha az API nem valaszolt volna, pedig csak nem vartuk meg.
+        deadline = time.perf_counter() + 90
+        while len(completed) < len(turns) and time.perf_counter() < deadline:
+            await asyncio.sleep(0.5)
+        await asyncio.sleep(2)  # a legutolso deltak
         done.set()
         task.cancel()
 
+    if os.environ.get("BENCH_DEBUG"):
+        print("    [debug] esemenyek:", dict(sorted(seen.items())))
     return {
         "turns": turns,
         "produced": " ".join("".join(t.text).strip() for t in turns).strip(),
